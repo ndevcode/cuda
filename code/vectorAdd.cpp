@@ -33,8 +33,8 @@ int main() {
 
     srand(42);
     for (int i = 0; i < NUM_BLOCKS*BLOCK_SIZE; i++) {
-        A.hostPtr[i] = rand()%NUM_BLOCKS*BLOCK_SIZE;
-        B.hostPtr[i] = rand()%NUM_BLOCKS*BLOCK_SIZE;
+        A.hostPtr[i] = rand()%(NUM_BLOCKS*BLOCK_SIZE);
+        B.hostPtr[i] = rand()%(NUM_BLOCKS*BLOCK_SIZE);
         SUM.hostPtr[i] = 0;
     }
 
