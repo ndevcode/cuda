@@ -69,6 +69,9 @@ int main() {
         CudaTimer timer;
 
         vectorAdd <<<grid,block>>> (A.devicePtr, B.devicePtr, SUM.devicePtr, NUM_BLOCKS*BLOCK_SIZE);
+        CUDA_CHECK(cudaPeekAtLastError()); // launch errors
+        CUDA_CHECK(cudaDeviceSynchronize());
+
 
         timer.stop();
 
@@ -91,6 +94,8 @@ int main() {
         CudaTimer timer;
 
         vectorAddGridStride <<<grid,block>>> (A.devicePtr, B.devicePtr, SUM.devicePtr, NUM_BLOCKS*BLOCK_SIZE);
+        CUDA_CHECK(cudaPeekAtLastError()); // launch errors
+        CUDA_CHECK(cudaDeviceSynchronize());
 
         timer.stop();
 
