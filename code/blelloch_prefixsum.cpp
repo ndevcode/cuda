@@ -72,6 +72,8 @@ int main() {
         A.copy_to_device(DSIZE);
 
         blellochPrefixSum <<<grid,block>>> (A.devicePtr,DSIZE,log2(DSIZE));
+        CUDA_CHECK(cudaPeekAtLastError()); // launch errors
+        CUDA_CHECK(cudaDeviceSynchronize());
 
         A.copy_to_host(DSIZE);
 
