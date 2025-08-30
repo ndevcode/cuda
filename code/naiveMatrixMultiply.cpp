@@ -2,6 +2,7 @@
 #include <iostream>
 #include <device_launch_parameters.h>
 #include "memory_alloc.h"
+#include "utility.hpp"
 
 using namespace std;
 
@@ -53,6 +54,8 @@ int main() {
     dim3 grid((DSIZE+block.x-1)/block.x, (DSIZE+block.y-1)/block.y);
 
     matmul <<<grid,block>>> (A.devicePtr, B.devicePtr, MULT.devicePtr, DSIZE);
+    CUDA_CHECK(cudaPeekAtLastError()); // launch errors
+    CUDA_CHECK(cudaDeviceSynchronize());
 
     MULT.copy_to_host(DSIZE*DSIZE);
 
