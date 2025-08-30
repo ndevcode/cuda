@@ -3,17 +3,19 @@
 #include <iostream>
 #include <cuda_runtime.h> 
 
+#include "ndev_cuda_utility.hpp"
+
 template <typename T>
 struct HostDevicePair {
     T* hostPtr = nullptr;
     T* devicePtr = nullptr;
 
     void copy_to_device(size_t count) const {
-        cudaMemcpy(devicePtr,hostPtr,count * sizeof(T),cudaMemcpyHostToDevice);
+        CUDA_CHECK(cudaMemcpy(devicePtr,hostPtr,count * sizeof(T),cudaMemcpyHostToDevice));
     }
 
     void copy_to_host(size_t count) const {
-        cudaMemcpy(hostPtr,devicePtr,count * sizeof(T),cudaMemcpyDeviceToHost);
+        CUDA_CHECK(cudaMemcpy(hostPtr,devicePtr,count * sizeof(T),cudaMemcpyDeviceToHost));
     }
 };
 
@@ -40,6 +42,15 @@ struct MemoryManager {
     }
 
     template <typename T>
+    T* allocate_only_device(unsigned int sz) {
+        T* d_ptr = nullptr;
+        CUDA_CHECK(cudaMalloc(&d_ptr, sz * sizeof(T))); 
+        device_allocations_.push_back(d_ptr);
+
+        return d_ptr;
+    }
+
+    template <typename T>
     HostDevicePair<T> allocate_host_and_device(unsigned int sz) {
         T* h_ptr = static_cast<T*>(std::malloc(sz * sizeof(T)));
         if (!h_ptr) {
@@ -48,11 +59,7 @@ struct MemoryManager {
         host_allocations_.push_back(h_ptr);
 
         T* d_ptr = nullptr;
-        cudaError_t err = cudaMalloc(&d_ptr, sz * sizeof(T));
-        if (err != cudaSuccess) {
-            std::free(h_ptr); 
-            throw std::runtime_error("cudaMalloc failed");
-        }
+        CUDA_CHECK(cudaMalloc(&d_ptr, sz * sizeof(T)));
         device_allocations_.push_back(d_ptr);
 
         return HostDevicePair<T>{h_ptr,d_ptr};
