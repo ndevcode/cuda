@@ -1,23 +1,25 @@
 #include <cuda_runtime.h>
 #include <iostream>
 
+#include "ndev_cuda_utility.hpp"
+
 struct CudaTimer {
     CudaTimer() {
-        cudaEventCreate(&start_);
-        cudaEventCreate(&stop_);
-        cudaEventRecord(start_);
+        CUDA_CHECK(cudaEventCreate(&start_));
+        CUDA_CHECK(cudaEventCreate(&stop_));
+        CUDA_CHECK(cudaEventRecord(start_));
     }
     virtual ~CudaTimer() {
-        cudaEventDestroy(start_);
-        cudaEventDestroy(stop_);
+        CUDA_CHECK(cudaEventDestroy(start_));
+        CUDA_CHECK(cudaEventDestroy(stop_));
     }
     void stop() {
-        cudaEventRecord(stop_);
-        cudaEventSynchronize(stop_);
+        CUDA_CHECK(cudaEventRecord(stop_));
+        CUDA_CHECK(cudaEventSynchronize(stop_));
     }
     float elapsedTimeUs() const {
         float ms = 0.0;
-        cudaEventElapsedTime(&ms,start_,stop_);
+        CUDA_CHECK(cudaEventElapsedTime(&ms,start_,stop_));
         return ms * 1000.0;
     }
 private :
