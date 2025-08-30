@@ -4,7 +4,7 @@
 #include <cassert>
 #include <device_launch_parameters.h>
 #include "memory_alloc.h"
-#include "utility.hpp"
+#include "ndev_cuda_utility.hpp"
 
 using namespace std;
 
@@ -68,7 +68,8 @@ int main() {
         auto start = std::chrono::high_resolution_clock::now();
 
         vectorAdd <<<grid,block>>> (A.devicePtr, B.devicePtr, SUM.devicePtr, NUM_BLOCKS*BLOCK_SIZE);
-        cudaDeviceSynchronize();
+        CUDA_CHECK(cudaPeekAtLastError()); // launch errors
+        CUDA_CHECK(cudaDeviceSynchronize());
 
         auto stop = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
@@ -90,7 +91,8 @@ int main() {
         auto start = std::chrono::high_resolution_clock::now();
 
         vectorAddGridStride <<<grid,block>>> (A.devicePtr, B.devicePtr, SUM.devicePtr, NUM_BLOCKS*BLOCK_SIZE);
-        cudaDeviceSynchronize();
+        CUDA_CHECK(cudaPeekAtLastError()); // launch errors
+        CUDA_CHECK(cudaDeviceSynchronize());
 
         auto stop = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
