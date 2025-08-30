@@ -58,6 +58,8 @@ int main() {
         A.copy_to_device(DSIZE);
 
         conv1d_algo1 <<<grid,block>>> (DSIZE,A.devicePtr,Y.devicePtr);
+        CUDA_CHECK(cudaPeekAtLastError()); // launch errors
+        CUDA_CHECK(cudaDeviceSynchronize());
 
         Y.copy_to_host(DSIZE);
 
@@ -74,6 +76,8 @@ int main() {
         auto start1 = std::chrono::high_resolution_clock::now();
         B.copy_to_device(DSIZE);
         conv1d_algo2 <<<grid,block>>> (DSIZE,B.devicePtr,Z.devicePtr);
+        CUDA_CHECK(cudaPeekAtLastError()); // launch errors
+        CUDA_CHECK(cudaDeviceSynchronize());
 
         Z.copy_to_host(DSIZE);
 
