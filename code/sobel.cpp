@@ -12,7 +12,7 @@
 
 using namespace std;
 
-#define TILE_SIZE 4  
+#define TILE_SIZE 32 
 
 namespace SobelFilter {
     __constant__ int X_dev[3][3];
@@ -30,8 +30,8 @@ namespace SobelFilter {
     };
 
     inline void uploadToDevice() {
-        cudaMemcpyToSymbol(X_dev, X_host, sizeof(X_host));
-        cudaMemcpyToSymbol(Y_dev, Y_host, sizeof(Y_host));
+        CUDA_CHECK(cudaMemcpyToSymbol(X_dev, X_host, sizeof(X_host)));
+        CUDA_CHECK(cudaMemcpyToSymbol(Y_dev, Y_host, sizeof(Y_host)));
     }
 }
 
@@ -243,6 +243,8 @@ std::pair<float*, float*> runCudaKernelExperiments(MemoryManager& mmgr,
     auto magnitude = mmgr.allocate_host_and_device<float>(numPixels);
     auto direction = mmgr.allocate_host_and_device<float>(numPixels);
 
+    cout << endl;
+
     srand(42);
     for (int i = 0; i < numPixels; i++) {
         input.hostPtr[i] = rand()%255;
@@ -252,16 +254,17 @@ std::pair<float*, float*> runCudaKernelExperiments(MemoryManager& mmgr,
         CudaTimer timer; 
         input.copy_to_device(numPixels);
         timer.stop();
-        cout << endl;
         cout << "H2D copy times : " << timer.elapsedTimeUs() << " us" << endl;
-        cout << endl;
     }
+
+    CUDA_CHECK(cudaDeviceSynchronize());
 
     dim3 blockSize(TILE_SIZE, TILE_SIZE);
     dim3 gridSize((width + TILE_SIZE - 1) / TILE_SIZE, (height + TILE_SIZE - 1) / TILE_SIZE);
 
     {
         CudaTimer timer;
+
         kernel<<<gridSize, blockSize>>>(
                 input.devicePtr,
                 magnitude.devicePtr,
@@ -269,21 +272,25 @@ std::pair<float*, float*> runCudaKernelExperiments(MemoryManager& mmgr,
                 height,
                 width
                 );
+        CUDA_CHECK(cudaPeekAtLastError()); // launch errors
 
         timer.stop();
         std::cout << "Sobel kernel time: " << timer.elapsedTimeUs() << " us\n";
     }
+
+    CUDA_CHECK(cudaDeviceSynchronize());
 
     {
         CudaTimer timer;
         magnitude.copy_to_host(numPixels);
         direction.copy_to_host(numPixels);
 
-        cout << endl;
+        timer.stop();
         cout << "D2H copy times : " << timer.elapsedTimeUs() << " us" << endl;
-        cout << endl;
 
     }
+
+    CUDA_CHECK(cudaDeviceSynchronize());
 
     return {magnitude.hostPtr, direction.hostPtr};
 }
