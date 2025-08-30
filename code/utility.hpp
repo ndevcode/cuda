@@ -2,6 +2,17 @@
 #include <type_traits>
 #include <cmath>
 
+#pragma once
+
+#define CUDA_CHECK(call) do {                                 \
+    cudaError_t err = call;                                   \
+    if (err != cudaSuccess) {                                 \
+        fprintf(stderr, "CUDA Error at %s:%d: %s\n",          \
+                __FILE__, __LINE__, cudaGetErrorString(err)); \
+        exit(EXIT_FAILURE);                                   \
+    }                                                         \
+} while(0)
+
 template <typename T,
           typename = typename std::enable_if<std::is_arithmetic<T>::value>::type>
 void printArr(T* arr, unsigned int sz) {
