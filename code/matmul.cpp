@@ -4,6 +4,7 @@
 #include <functional>
 #include <device_launch_parameters.h>
 #include "memory_alloc.h"
+#include "utility.hpp"
 
 using namespace std;
 
@@ -119,6 +120,8 @@ int main() {
         auto start = std::chrono::high_resolution_clock::now();
 
         matmul <<<grid,block>>> (A.devicePtr, B.devicePtr, MULT.devicePtr, DSIZE, MatmulNaive{});
+        CUDA_CHECK(cudaPeekAtLastError()); // launch errors
+        CUDA_CHECK(cudaDeviceSynchronize());
 
         auto stop = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
@@ -150,6 +153,8 @@ int main() {
         auto start1 = std::chrono::high_resolution_clock::now();
 
         matmul_cache <block_size> <<<grid,block>>> (A1.devicePtr, B1.devicePtr, MULT1.devicePtr, DSIZE, MatmulTiled<block_size>{});
+        CUDA_CHECK(cudaPeekAtLastError()); // launch errors
+        CUDA_CHECK(cudaDeviceSynchronize());
 
         auto stop1 = std::chrono::high_resolution_clock::now();
         auto duration1 = std::chrono::duration_cast<std::chrono::microseconds>(stop1 - start1);
