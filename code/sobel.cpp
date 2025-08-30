@@ -7,7 +7,7 @@
 #include <device_launch_parameters.h>
 
 #include "memory_alloc.h"
-#include "ndev_cuda_utility.hpp"
+#include "utility.hpp"
 #include "cuda_timer.h"
 
 using namespace std;
