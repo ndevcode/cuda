@@ -58,6 +58,213 @@ void sobelAtPixel(const float *img, int i, int j,
     }
 }
 
+__host__ __device__
+float nmsAtPixel(
+    const float* magnitude,
+    const float* direction,
+    int i, int j, int m, int n)
+{
+    constexpr float PI = 3.14159265358979323846f;
+    int idx = i * n + j;
+
+    float angle = direction[idx] * 180.0f / PI;
+    if (angle < 0) angle += 180.0f;
+
+    float mag1 = 0.0f, mag2 = 0.0f;
+
+    // Quantize orientation to 0, 45, 90, 135
+    if ((angle >= 0 && angle < 22.5f) || (angle >= 157.5f && angle < 180.0f)) {
+        mag1 = magnitude[idx - 1];
+        mag2 = magnitude[idx + 1];
+    } else if (angle >= 22.5f && angle < 67.5f) {
+        mag1 = magnitude[(i - 1) * n + (j + 1)];
+        mag2 = magnitude[(i + 1) * n + (j - 1)];
+    } else if (angle >= 67.5f && angle < 112.5f) {
+        mag1 = magnitude[(i - 1) * n + j];
+        mag2 = magnitude[(i + 1) * n + j];
+    } else if (angle >= 112.5f && angle < 157.5f) {
+        mag1 = magnitude[(i - 1) * n + (j - 1)];
+        mag2 = magnitude[(i + 1) * n + (j + 1)];
+    }
+
+    float mag = magnitude[idx];
+    return (mag >= mag1 && mag >= mag2) ? mag : 0.0f;
+}
+
+/*******************************************************************************/
+void gaussianBlur(const float* input, float* output, int m, int n) {
+    float kernel[5] = {0.06136,0.24477,0.38774,0.24477,0.06136};
+    int ksize = 2;
+    vector<float> temp(m*n,0.0f);
+    //horizontal pass
+    for (int i = 0; i < m; i++) {
+        for (int j = 0; j < n; j++) {
+            float sum = 0;
+            for (int k = -ksize; k <= ksize; k++) {
+                int xx = std::clamp(j+k,0,n-1);
+                sum += input[i*n+xx] * kernel[k+ksize];
+            }
+            temp[i*n+j] = sum;
+        }
+    }
+
+    //vertical pass
+    for (int i = 0; i < m; i++) {
+        for (int j = 0; j < n; j++) {
+            float sum = 0;
+            for (int k = -ksize; k <= ksize; k++) {
+                int yy = std::clamp(i+k,0,m-1);
+                sum += temp[yy*n + j] * kernel[k+ksize];
+            }
+            output[i*n+j] = sum;
+        }
+    }
+}
+
+void sobelKernelBaseline(
+    const float* img,
+    float *magnitude,
+    float *direction,
+    int m,
+    int n) {
+
+    for (int i = 0; i < m; i++) {
+        for (int j = 0; j < n; j++) {
+            int idx = i * n + j;
+            float vi = 0.0f, vj = 0.0f;
+            sobelAtPixel(img,i,j,m,n,SobelFilter::X_host, SobelFilter::Y_host, vi, vj);
+            magnitude[idx] = sqrtf(vi * vi + vj * vj);
+            direction[idx] = atan2f(vj,vi);
+        }
+    }
+}
+
+void doNMS(
+    const float *magnitude,
+    const float *direction,
+    int m,
+    int n,
+    float *nms) {
+
+    for (int i = 1; i < m-1; i++) {
+        for (int j = 1; j < n-1; j++) {
+            nms[i * n + j] = nmsAtPixel(magnitude,direction,i,j,m,n);
+        }
+    }
+}
+
+void doDoubleThreshold(const float* nms, int m, int n, 
+    const float highThreshold, const float lowThreshold, float* edges) {
+
+    for (int i = 0; i < (m * n); i++) {
+        if (nms[i] >= highThreshold) {
+            edges[i] = 2;
+        } else if (nms[i] >= lowThreshold) {
+            edges[i] = 1;
+        } else {
+            edges[i] = 0;
+        }
+    }
+}
+
+void doHysteresis(float* edges, int m, int n) {
+
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (int i = 1; i < m-1; i++) {
+            for (int j = 1; j < n-1; j++) {
+                int idx = i * n + j;
+                if (edges[idx] == 1) {
+                    bool connected = false;
+                    for (int di = -1; di <= 1; di++) {
+                        for (int dj = -1; dj <= 1; dj++) {
+                            int ni = i + di, nj = j + dj;
+                            if (ni < 0 || ni >= m || nj < 0 || nj >= n) continue;
+                            if (edges[ni * n + nj]  == 2) {
+                                connected = true;
+                            }   
+                        }
+                    }
+                    if (connected) {
+                        edges[idx] = 2;
+                        changed = true;
+                    }
+                }
+            }
+        }
+    }
+    for (int i = 1; i < m-1; i++) {
+        for (int j = 1; j < n-1; j++) {
+            int idx = i * n + j;
+            if (edges[idx] == 1) {
+                edges[idx] = 0;
+            }
+        }
+    }
+}
+
+void cannyKernelBaseline(
+    const float* img,
+    float* blurred,
+    float* nms,
+    float *edges,
+    float *magnitude,
+    float *direction,
+    int m,
+    int n) {
+
+    //copy(img,img+(m*n),begin(blurred));
+    //Step 1 : Gaussian blur
+    gaussianBlur(img,blurred,m,n);
+
+    //Step 2 : find magnitude and orientation via Sobel
+    sobelKernelBaseline(blurred,magnitude,direction,m,n);
+
+    //Step 3 : NMS
+    doNMS(magnitude,direction,m,n,nms);
+
+    //Step 4 : Double Threshold
+    float maxMagnitude = *max_element(nms,nms+(m*n));
+    //std::cout << "Max magnitude serial is " << maxMagnitude << std::endl;
+    float highThreshold = 0.2f * maxMagnitude, lowThreshold = 0.1f * maxMagnitude;
+    //cout << "high threshold serial : " << highThreshold << " low threshold serial : " << lowThreshold << endl;
+    doDoubleThreshold(nms,m,n,highThreshold,lowThreshold,edges);
+
+    //Step 5 : Hysteresis
+    doHysteresis(edges,m,n);
+
+}
+
+std::array<float*,5> runBaseline(MemoryManager& mmgr, int width, int height) {
+    int numPixels = width * height;
+    auto input = mmgr.allocate_only_host<float>(numPixels); 
+    auto blurred = mmgr.allocate_only_host<float>(numPixels); 
+    auto nms = mmgr.allocate_only_host<float>(numPixels); 
+    auto edges = mmgr.allocate_only_host<float>(numPixels);
+    auto magnitude_host = mmgr.allocate_only_host<float>(numPixels);
+    auto direction_host = mmgr.allocate_only_host<float>(numPixels);
+
+    srand(42);
+    for (int i = 0; i < numPixels; i++) {
+        input[i] = rand()%255;
+    }
+
+    {
+        auto start = std::chrono::high_resolution_clock::now();
+
+        cannyKernelBaseline(input,blurred,nms,edges,magnitude_host,direction_host, height, width);
+
+        auto stop = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+
+        cout << endl;
+        cout << "Time taken for serial canny is : " << duration.count() << " us" << endl;
+        cout << endl;
+    }
+    return {edges,magnitude_host,direction_host,blurred,nms};
+}
+
 /*******************************************************************************/
 __global__ void gaussianBlurHorizontalCudaOne(const float* input, float* output, int m, int n) {
     int i = blockIdx.y * blockDim.y + threadIdx.y;
@@ -121,57 +328,39 @@ __global__ void doNMSKernelOne(
     int i = blockIdx.y * blockDim.y + threadIdx.y;
     int j = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (i <= 0 || j <= 0 || i >= m-1 || j >= n-1) return;
-    constexpr float PI = 3.14159265358979323846f;
-
-    int idx = i * n + j;
-    float angle = direction[idx] * 180.0 / PI;
-    if (angle < 0) angle += 180;
-
-    float mag1 = 0, mag2 = 0;
-
-    //Quantize orientation to 0,45,90,135
-    if ((angle >= 0 && angle < 22.5) || (angle >= 157.5 && angle < 180)) {
-        mag1 = magnitude[idx-1];
-        mag2 = magnitude[idx+1];
-    } else if (angle >= 22.5 && angle < 67.5) {
-        mag1 = magnitude[(i-1) * n + (j+1)];
-        mag2 = magnitude[(i+1) * n + (j-1)];
-    } else if (angle >= 67.5 && angle < 112.5) {
-        mag1 = magnitude[(i-1) * n + j];
-        mag2 = magnitude[(i+1) * n + j];
-    } else if (angle >= 112.5 && angle < 157.5) {
-        mag1 = magnitude[(i-1) * n + (j-1)];
-        mag2 = magnitude[(i+1) * n + (j+1)];
-    }
-
-
-    float mag = magnitude[idx];
-    nms[idx] = (mag >= mag1 && mag >= mag2) ? mag : 0;
+    if (i < 1 || j < 1 || i >= m-1 || j >= n-1) return;
+    nms[i * n + j] = nmsAtPixel(magnitude,direction,i,j,m,n);
 }
 
 __global__ void segmented_max_reduction_kernel(const float* input, float* output, int length) {
-    extern __shared__ float sharedInput[];
-    unsigned int tid = threadIdx.x;
-    unsigned int idx = blockIdx.x * blockDim.x + tid;
+    extern __shared__ float sdata[];
+    int tid = threadIdx.x;
+    int idx = blockIdx.x * blockDim.x + tid;
 
-    // load into shared memory
-    float val = -FLT_MAX;
-    if (idx < length) val = input[idx];
-    sharedInput[tid] = val;
+    // Initialize per-thread local max
+    float localMax = -FLT_MAX;
+
+    // Grid-stride loop to cover entire array
+    while (idx < length) {
+        localMax = fmaxf(localMax, input[idx]);
+        idx += blockDim.x * gridDim.x;
+    }
+
+    // Store local max into shared memory
+    sdata[tid] = localMax;
     __syncthreads();
 
-    // reduction in shared memory
-    for (unsigned int stride = blockDim.x/2; stride > 0; stride >>= 1) {
-        if (tid < stride) {
-            sharedInput[tid] = fmaxf(sharedInput[tid], sharedInput[tid + stride]);
+    // Parallel reduction in shared memory
+    for (unsigned int s = blockDim.x / 2; s > 0; s >>= 1) {
+        if (tid < s) {
+            sdata[tid] = fmaxf(sdata[tid], sdata[tid + s]);
         }
         __syncthreads();
     }
 
-    // first thread of block writes its block max
+    // First thread writes block result into global output
     if (tid == 0) {
-		atomicExch(output, fmax(*output,sharedInput[0]));
+        atomicMax((int*)output, __float_as_int(sdata[0]));
     }
 }
 
@@ -197,8 +386,8 @@ float getMaxMagnitude(MemoryManager& mmgr, MaxMagnitudeFind& reducer, const floa
 __global__ void doDoubleThresholdKernelOne(const float *nms,
     int m,
     int n,
-    float highThreshold,
-    float lowThreshold,
+    const float highThreshold,
+    const float lowThreshold,
     float *edges) {
 
     int i = blockIdx.y * blockDim.y + threadIdx.y;
@@ -320,6 +509,7 @@ void hysteresis_bfs_cuda(
     CUDA_CHECK(cudaPeekAtLastError());
 }
 
+
 template <
     typename GaussianBlurHorizontal, 
     typename GaussianBlurVertical,
@@ -331,7 +521,7 @@ template <
     typename HysteresisBFS,
     typename HysteresisCleanup
     >
-std::array<float*,3>
+std::array<float*,5>
 runCudaKernelExperiments(MemoryManager& mmgr,
                 int width, int height,
                 GaussianBlurHorizontal& hBlurrer,
@@ -465,6 +655,7 @@ runCudaKernelExperiments(MemoryManager& mmgr,
         float tt = timer.elapsedTimeUs();
         totalTime += tt;
         std::cout << "Canny maximum magnitude finding time: " << tt << " us\n";
+        //std::cout << "Max magnitude parallel is " << maxMagnitude << std::endl;
     }
 
     //synchronize
@@ -473,6 +664,7 @@ runCudaKernelExperiments(MemoryManager& mmgr,
     //Step 6 : edge thinning
     {
         float highThreshold = 0.2f * maxMagnitude, lowThreshold = 0.1f * maxMagnitude;
+        //cout << "high threshold parallel : " << highThreshold << " low threshold parallel : " << lowThreshold << endl;
         CudaTimer timer;
         thinner<<<gridSize, blockSize>>>(
                 nms.devicePtr,
@@ -511,6 +703,8 @@ runCudaKernelExperiments(MemoryManager& mmgr,
         edges.copy_to_host(numPixels);
         magnitude.copy_to_host(numPixels);
         direction.copy_to_host(numPixels);
+        blurred.copy_to_host(numPixels);
+        nms.copy_to_host(numPixels);
         timer.stop();
         float tt = timer.elapsedTimeUs();
         totalTime += tt;
@@ -524,10 +718,11 @@ runCudaKernelExperiments(MemoryManager& mmgr,
 
     cout << "Total CUDA runtime for Canny algorithm is " << totalTime << " us" << endl;
 
-    return {edges.hostPtr, magnitude.hostPtr, direction.hostPtr};
+    return {edges.hostPtr, magnitude.hostPtr, direction.hostPtr, blurred.hostPtr, nms.hostPtr};
 } 
 
 /*******************************************************************************/
+
 int main() {
     int width = 512;
     int height = 512;
@@ -536,7 +731,9 @@ int main() {
 
     SobelFilter::uploadToDevice();
 
-    auto [kernel_one_edges, kernel_one_magnitude, kernel_one_direction] = runCudaKernelExperiments(
+    auto [edges, baseline_magnitude, baseline_direction,baseline_blurred, baseline_nms] = runBaseline(mmgr,width,height);
+
+    auto [kernel_one_edges, kernel_one_magnitude, kernel_one_direction,kernel_one_blurred, kernel_one_nms] = runCudaKernelExperiments(
                                         mmgr,
                                         width,
                                         height,
@@ -549,5 +746,10 @@ int main() {
                                         seedFrontierKernel,
                                         expandFrontierKernel,
                                         cleanupWeakKernel);
+
+    assert(areEqual(baseline_blurred,kernel_one_blurred,width*height,1e-4f));
+    assert(areEqual(baseline_magnitude,kernel_one_magnitude,width*height,1e-3f));
+    assert(areEqual(baseline_direction,kernel_one_direction,width*height,1e-3f)); 
+    assert(areEqual(edges,kernel_one_edges,width*height,1e-3f)); 
 
 }
