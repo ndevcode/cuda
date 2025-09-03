@@ -471,7 +471,9 @@ float findDeterminantCUDAFused(const float* img, const float* Kxx, const float* 
     CudaTimer timer; 
 
     fusedDeterminantKernel<<<gridSize,blockSize>>>(img,Kxx,Kyy,Kxy,Lxx,Lyy,Lxy,detS,m,n,maxKernelSize,sigma);
-
+    CUDA_CHECK(cudaPeekAtLastError()); // launch errors
+    CUDA_CHECK(cudaDeviceSynchronize());
+    
     timer.stop();
     runtime += timer.elapsedTimeUs();
 
@@ -491,6 +493,8 @@ float findDeterminantCUDASharedFused(const float* img, const float* Kxx, const f
     CudaTimer timer; 
 
     fusedDeterminantShared<<<gridSize,blockSize,sharedMem>>>(img,Kxx,Kyy,Kxy,detS,m,n,maxKernelSize,sigma);
+    CUDA_CHECK(cudaPeekAtLastError()); // launch errors
+    CUDA_CHECK(cudaDeviceSynchronize());
 
     timer.stop();
     runtime += timer.elapsedTimeUs();
