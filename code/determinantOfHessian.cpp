@@ -276,6 +276,59 @@ __global__ void fusedDeterminantKernel(const float* img, const float* Kxx, const
     AT(Lxy,i,j,n) = convolveAtPixel(img, m, n, Kxy, ksize, i, j);
     AT(detS,i,j,n) = detHAtPixelFromImages(Lxx, Lyy, Lxy, i*n+j, sigma);
 }
+
+__global__ void fusedDeterminantShared(const float* img, const float* Kxx, const float* Kyy, const float* Kxy, 
+    float* detS, int m, int n, int ksize, float sigma) {
+
+    extern __shared__ float tile[];
+    //shared memory as 2D tile with halo
+    int radius = ksize/2;
+    int tileM, tileN;
+    tileM = tileN = TILE_SIZE + 2 * radius;
+
+    float* tile2D = tile;
+
+    int ti = threadIdx.y, tj = threadIdx.x;
+    int j = blockIdx.x * TILE_SIZE + tj;
+    int i = blockIdx.y * TILE_SIZE + ti;
+
+    //cooperative load
+    for (int di = ti; di < tileM; di += blockDim.y) {
+        for (int dj = tj; dj < tileN; dj += blockDim.x) {
+            int global_i = blockIdx.y * TILE_SIZE + di  - radius;
+            int global_j = blockIdx.x * TILE_SIZE + dj  - radius;
+            if (global_i >= 0 && global_i < m && global_j >= 0 && global_j < n) {
+                tile2D[di * tileN + dj] = img[global_i * n + global_j];
+            } else {
+                tile2D[di * tileN + dj] = 0.0f;
+            }
+        }
+    }
+
+    __syncthreads();
+    if (i >= m || j >= n || tj >= TILE_SIZE || ti >= TILE_SIZE) {
+        return;
+    }
+    float Lxx, Lyy, Lxy;
+    Lxx = Lyy = Lxy = 0.0f;
+
+    for (int di = -radius; di <= radius; di++) {
+        for (int dj = -radius; dj <= radius; dj++) {
+            float pixel = tile2D[(ti + di + radius) * tileN  + (tj + dj + radius)];
+            int kidx = (di + radius) * ksize + (dj + radius);
+            Lxx += pixel * Kxx[kidx];
+            Lyy += pixel * Kyy[kidx];
+            Lxy += pixel * Kxy[kidx];
+        }
+    }
+
+    float s4 = sigma * sigma;
+    s4 = s4 * s4;
+    float det = (Lxx * Lyy - Lxy * Lxy) * s4;
+
+    detS[i * n + j] = det;
+}
+
 // -----------------------------
 // Warp-per-pixel NMS reducer
 // -----------------------------
@@ -418,6 +471,26 @@ float findDeterminantCUDAFused(const float* img, const float* Kxx, const float* 
     CudaTimer timer; 
 
     fusedDeterminantKernel<<<gridSize,blockSize>>>(img,Kxx,Kyy,Kxy,Lxx,Lyy,Lxy,detS,m,n,maxKernelSize,sigma);
+
+    timer.stop();
+    runtime += timer.elapsedTimeUs();
+
+    return runtime;
+
+}
+
+float findDeterminantCUDASharedFused(const float* img, const float* Kxx, const float* Kyy, const float* Kxy, 
+    float *Lxx, float *Lyy, float* Lxy, float* detS, int m, int n, int maxKernelSize, float sigma) {
+
+    dim3 blockSize(TILE_SIZE, TILE_SIZE);
+    dim3 gridSize((n + TILE_SIZE - 1) / TILE_SIZE, (m + TILE_SIZE - 1) / TILE_SIZE);
+    size_t sharedMem = (TILE_SIZE + maxKernelSize - 1) * (TILE_SIZE + maxKernelSize - 1) * sizeof(float);
+
+    float runtime = 0.0f;
+
+    CudaTimer timer; 
+
+    fusedDeterminantShared<<<gridSize,blockSize,sharedMem>>>(img,Kxx,Kyy,Kxy,detS,m,n,maxKernelSize,sigma);
 
     timer.stop();
     runtime += timer.elapsedTimeUs();
@@ -655,7 +728,7 @@ int main() {
     } 
 
     // Run DoH Parallel - Fused Kernel, Warp primitives
-    auto blobs_doh_cuda3 = detectBlobsScaleSpaceSharedCUDA(mmgr, img, height, width, scales_arr, numScales, 1e-2f, findDeterminantCUDAFused, doNMSCUDAWarpPerPixel);
+    auto blobs_doh_cuda3 = detectBlobsScaleSpaceSharedCUDA(mmgr, img, height, width, scales_arr, numScales, 1e-2f, findDeterminantCUDASharedFused, doNMSCUDAWarpPerPixel);
     cout << "DoH blobs, Fused Kernel CUDA warp intrinsics:\n";
     for (auto &b : blobs_doh_cuda3) {
         cout << " x=" << get<0>(b) << " y=" << get<1>(b) << " sigma=" << get<2>(b) << " resp=" << get<3>(b) << "\n";
