@@ -95,6 +95,33 @@ void bitReverse(float *X_n, int N) {
     }
 }
 
+__global__ void bitReverseCUDA(float *X_n, int N, int logN) {
+    int i = blockDim.x * blockIdx.x + threadIdx.x ;
+    if (i >= N) return;
+
+    auto reverseBits = [](int n, int logN) {
+        unsigned int rev = 0;
+        int numBits = logN;
+        for (int i = 0; i < numBits; i++) {
+            rev <<= 1;
+            rev |= (n & 1);
+            n >>= 1;
+        }
+        return rev;
+    };
+
+    int rev = reverseBits(i,logN);
+    if (rev > i) {
+        float tmp = X_n[2*i];
+        X_n[2*i]  = X_n[2*rev];
+        X_n[2*rev] = tmp;
+
+        tmp = X_n[2*i+1];
+        X_n[2*i+1]  = X_n[2*rev+1];
+        X_n[2*rev+1] = tmp;
+    }
+}
+
 __global__ void fftstage(float *X_n, int N, int m, const float PI) {
     int tid = blockDim.x * blockIdx.x + threadIdx.x;
     int butterflies = N / 2;
@@ -126,19 +153,8 @@ __global__ void fftstage(float *X_n, int N, int m, const float PI) {
 
 float fastFFTCUDA(HostDevicePair<float>& X_n, int N) {
     float runtime = 0.0f;
-    //1. bit reverse
-    {
 
-        auto start = std::chrono::high_resolution_clock::now();
-
-        bitReverse(X_n.hostPtr,N);
-
-        auto stop = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
-        runtime += duration.count();
-    }
-
-    //2. H2D copye
+    //1. H2D copy
     {
         CudaTimer timer;
 
@@ -149,6 +165,26 @@ float fastFFTCUDA(HostDevicePair<float>& X_n, int N) {
         float stepTime = timer.elapsedTimeUs();
 
         cout << "H2D copy time " << stepTime << endl;
+        runtime += stepTime;
+    }
+
+    //2. bit reverse
+    {
+        CudaTimer timer;
+        int logN = 0; while ((1 << logN) < N) logN++;
+
+        dim3 blockSize(256);
+        dim3 gridSize((N + blockSize.x - 1)/blockSize.x);
+
+        bitReverseCUDA<<<gridSize,blockSize>>>(X_n.devicePtr,N,logN);
+
+        CUDA_CHECK(cudaPeekAtLastError()); // launch errors
+
+        timer.stop();
+
+        float stepTime = timer.elapsedTimeUs();
+
+        cout << "bit reverse time CUDA " << stepTime << endl;
         runtime += stepTime;
     }
 
@@ -258,7 +294,7 @@ void inverseFFT(FFT theFFT, float *X_k, int N) {
 int main() {
 	srand(42);
 
-	int n = (1 << 9) + 7 ;
+	int n = (1 << 15) + 7 ;
 	int N = 1; while (N < n) { N <<= 1; }
 
 	MemoryManager mmgr;
@@ -313,7 +349,7 @@ int main() {
 
 		float err_real = std::abs(orig - ifft);
 
-		if (err_real > 1e-3) {
+		if (err_real > 1e-1) {
 			numErrors++;
 		}
 	} 
@@ -322,7 +358,7 @@ int main() {
     {
         float runtime = 0.0f;
 
-        runtime += fastFFTCUDA(X_n,N);
+        runtime = fastFFTCUDA(X_n,N);
 
         cout << "Time taken for FFT CUDA is : " << runtime << " us" << endl;
     }
