@@ -1,88 +1,89 @@
-//nvcc -x cu parallel_blelloch.cpp -o pb
+//nvcc -x cu one_thread_blelloch.cu -o one_thread_blelloch
 #include <iostream>
-#include <chrono>
-#include <device_launch_parameters.h>
-#include "memory_alloc.h"
-#include "utility.hpp"
+#include <cstdlib>
+#include <vector>
+#include <numeric>
+#include <algorithm>
+#include <iterator>
+#include <iostream>
+#include <cassert>
 
-const int DSIZE = 8;
-const int THREADS_PER_BLOCK = DSIZE;
+#include "ndev_cuda_utility.hpp"
+#include "memory_alloc.h"
+#include "cuda_timer.h"
 
 using namespace std;
 
-__global__ void blellochPrefixSum(float* arr, int N, int logN) {
-    __shared__ float temp[THREADS_PER_BLOCK];
+__global__ void blelloch_shared_memory(float *arr, int n, float *res) {
+    extern __shared__ float shmem[];
+
     int tid = threadIdx.x;
+    int gid = blockDim.x * blockIdx.x + threadIdx.x;
+    if (gid >= n) return;
 
-    //load input into shared memory
-    temp[tid] = arr[tid];
+    shmem[tid] = arr[gid];
     __syncthreads();
 
-    //upsweep (reduce) phase
-    for (int d = 0; d < logN; d++) {
-        int step = 1 << (d + 1);
-        int idx = (tid + 1) * step - 1;
-        if (idx < N) {
-            temp[idx] += temp[idx - (step >> 1)];
-        }
-        __syncthreads();
-    }
-    if (tid == 0) temp[N-1] = 0;
-    __syncthreads();
-
-    //downward phase
-    for (int d = logN-1; d >= 0; d--) {
-        int step = 1 << (d + 1);
-        int idx = (tid + 1) * step - 1;
-        if (idx < N) {
-            float t = temp[idx - (step >> 1)];
-            temp[idx - (step >> 1)] = temp[idx];
-            temp[idx] += t;
+    //upsweep
+    for (int d = 1; d < blockDim.x; d <<= 1) {
+        int idx = (tid + 1) * d * 2 - 1;
+        if (idx < blockDim.x) {
+            shmem[idx]  +=  shmem[idx-d];
         }
         __syncthreads();
     }
 
-    //write result back to global memory
-    arr[tid] = temp[tid];
+    //copy over last element to result array
+    if (tid == 0) {
+        //res[blockIdx.x] = shmem[blockDim.x-1];
+        shmem[blockDim.x-1] = 0;
+    }
+    __syncthreads();
 
+    //downsweep
+    for (int d = blockDim.x/2; d > 0; d >>= 1) {
+        int idx = (tid + 1) * d * 2 - 1;
+        if (idx < blockDim.x) {
+            float tmp = shmem[idx];
+            shmem[idx] += shmem[idx-d];
+            shmem[idx-d] = tmp;
+        }
+        __syncthreads();
+    }
+
+    arr[gid] = shmem[tid];
+    __syncthreads();
+}
+
+void partial_sum_CUDA(vector<float>& orig) {
+    MemoryManager mmgr;
+
+    int n = orig.size();
+    int n2 = 1;
+    for (; n2 < n; n2 <<= 1);
+
+
+    float *arr = mmgr.allocate_only_device<float>(n2);
+
+    CUDA_CHECK(cudaMemcpy(arr,orig.data(),n*sizeof(float),cudaMemcpyHostToDevice));
+
+    CUDA_CHECK(cudaMemset(arr+n,0,(n2-n)*sizeof(float)));
+
+    dim3 blockSize(256);
+
+    blelloch_shared_memory<<<1,blockSize,blockSize.x*sizeof(float)>>>(arr,n,arr);
+
+    CUDA_CHECK(cudaMemcpy(orig.data(),arr,n*sizeof(float),cudaMemcpyDeviceToHost));
 }
 
 int main() {
-    MemoryManager mmgr;
-    auto A = mmgr.allocate_host_and_device<float>(DSIZE);
-    srand(42);
-    for (int i = 0; i < DSIZE-1; i++) {
-        A.hostPtr[i] = rand()%DSIZE;
-    }
-    A.hostPtr[DSIZE-1] = 0;
+    int numElements = 256;
 
-    printArr(A.hostPtr,DSIZE);
+    vector<float> orig(numElements);
+    iota(begin(orig),end(orig),1);
 
-    auto log2 = [](unsigned int x) -> int {
-        int res = 0;
-        while (x >>= 1) ++res;
-        return res;
-    };
+    partial_sum_CUDA(orig);
 
-    dim3 grid(1);
-    dim3 block(THREADS_PER_BLOCK);
-    {
-        auto start = std::chrono::high_resolution_clock::now();
-
-        A.copy_to_device(DSIZE);
-
-        blellochPrefixSum <<<grid,block>>> (A.devicePtr,DSIZE,log2(DSIZE));
-        CUDA_CHECK(cudaPeekAtLastError()); // launch errors
-        CUDA_CHECK(cudaDeviceSynchronize());
-
-        A.copy_to_host(DSIZE);
-
-        auto stop = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
-
-        cout << endl;
-        cout << "Time taken : " << duration.count() << " us" << endl;
-        cout << endl;
-    }
-    printArr(A.hostPtr,DSIZE);
+    copy(begin(orig),end(orig),ostream_iterator<float>(cout,", "));
+    cout << endl;
 }
