@@ -10,9 +10,6 @@ The projects are grouped by category for clarity.
 - [vectorAdd.cpp](https://github.com/ndevcode/cuda/blob/main/code/vectorAdd.cpp) / [vectorAdd2.cpp](https://github.com/ndevcode/cuda/blob/main/code/vectorAdd2.cpp)  
   Basic CUDA vector addition examples, demonstrating memory transfers, grid/block indexing, and kernel launches.
 
-- [my_cuda_kernels.cuh](https://github.com/ndevcode/cuda/blob/main/code/my_cuda_kernels.cuh)  
-  Header file collecting reusable custom CUDA kernels for modular development.
-
 ---
 
 ##  Reduction Algorithms
