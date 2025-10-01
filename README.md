@@ -6,12 +6,6 @@ The projects are grouped by category for clarity.
 
 ---
 
-## 🚀 Core CUDA Fundamentals
-- [vectorAdd.cpp](https://github.com/ndevcode/cuda/blob/main/code/vectorAdd.cpp) / [vectorAdd2.cpp](https://github.com/ndevcode/cuda/blob/main/code/vectorAdd2.cpp)  
-  Basic CUDA vector addition examples, demonstrating memory transfers, grid/block indexing, and kernel launches.
-
----
-
 ##  Reduction Algorithms
 - [max_kernel.cu](https://github.com/ndevcode/cuda/blob/main/code/max_kernel.cu)  
   Custom CUDA kernel to compute maximum values across arrays, illustrating warp-level parallelism and reduction strategies.
