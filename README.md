@@ -48,21 +48,7 @@ The projects are grouped by category for clarity.
 
 ---
 
-##  Utilities & Infrastructure
-- [cudaTimer.h](https://github.com/ndevcode/cuda/blob/main/code/cudaTimer.h)  
-  Simple CUDA timing utility for profiling GPU kernel execution.
-
-- [memory_alloc.h](https://github.com/ndevcode/cuda/blob/main/code/memory_alloc.h)  
-  Helper functions for CUDA memory allocation and management.
-
-- [utility.hpp](https://github.com/ndevcode/cuda/blob/main/code/utility.hpp)  
-  Common utility functions and abstractions used across multiple CUDA projects.
-
-
----
-
 ##  Notes
-- Projects range from **fundamental CUDA exercises** (vector addition, prefix sum) to **advanced CV algorithms** (Canny, DoH, template matching).
 - Each project highlights **parallel programming principles**:  
   - memory coalescing  
   - shared memory tiling  
