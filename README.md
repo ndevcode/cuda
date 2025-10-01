@@ -5,7 +5,7 @@ The projects are grouped by category for clarity.
 
 ---
 
-## 🚀 Core CUDA Fundamentals
+## Core CUDA Fundamentals
 - **vectorAdd.cpp / vectorAdd2.cpp**  
   Basic CUDA vector addition examples, demonstrating memory transfers, grid/block indexing, and kernel launches.
 
@@ -14,7 +14,7 @@ The projects are grouped by category for clarity.
 
 ---
 
-## 🔽 Reduction Algorithms
+## Reduction Algorithms
 - **max_kernel.cu**  
   Custom CUDA kernel to compute maximum values across arrays, illustrating warp-level parallelism and reduction strategies.
 
@@ -23,7 +23,7 @@ The projects are grouped by category for clarity.
 
 ---
 
-## 🧮 Matrix Multiplication
+## Matrix Multiplication
 - **naiveMatrixMultiply.cpp**  
   CPU-based naive matrix multiplication for baseline comparison.
 
@@ -32,13 +32,13 @@ The projects are grouped by category for clarity.
 
 ---
 
-## 🔊 Fast Fourier Transform (FFT)
+## Fast Fourier Transform (FFT)
 - **fft.cpp**  
   Fast Fourier Transform implementation using CUDA, leveraging parallel butterfly operations for signal transforms.
 
 ---
 
-## 🖼️ Image Processing & Computer Vision
+## Image Processing & Computer Vision
 - **sobel.cpp**  
   Edge detection using Sobel filters on GPU.
 
@@ -56,7 +56,7 @@ The projects are grouped by category for clarity.
 
 ---
 
-## 🧩 Utilities & Infrastructure
+## Utilities & Infrastructure
 - **cudaTimer.h**  
   Simple CUDA timing utility for profiling GPU kernel execution.
 
@@ -71,7 +71,7 @@ The projects are grouped by category for clarity.
 
 ---
 
-## 📌 Notes
+## Notes
 - Projects range from **fundamental CUDA exercises** (vector addition, prefix sum) to **advanced CV algorithms** (Canny, DoH, template matching).
 - Each project highlights **parallel programming principles**:  
   - memory coalescing  
@@ -81,8 +81,3 @@ The projects are grouped by category for clarity.
 
 ---
 
-## ✅ Future Directions
-- Expand matrix algorithms (LU/QR factorization, eigen decomposition).  
-- Extend FFT coverage (2D FFTs, batched FFTs).  
-- Implement more advanced CV operators (optical flow, GPU-accelerated segmentation).  
-- Explore mixed-precision kernels with Tensor Cores.  
