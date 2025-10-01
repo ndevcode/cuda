@@ -47,7 +47,7 @@ The projects are grouped by category for clarity.
   CUDA-based computation of the Hessian determinant, used for blob detection (DoH) and scale-space interest point detection.
 
 - [blob_finding.cu](https://github.com/ndevcode/cuda/blob/main/code/blob_finding.cu)
-CPU-based implementation of blob detection using Determinant of Hessian (DoH), Laplacian of Gaussian (LoG), and Difference of Gaussian (DoG) with scale-space non-maximum suppression.
+  CPU-based implementation of blob detection using Determinant of Hessian (DoH), Laplacian of Gaussian (LoG), and Difference of Gaussian (DoG) with scale-space non-maximum suppression.
 ---
 
 ##  Notes
