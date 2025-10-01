@@ -23,10 +23,10 @@ The projects are grouped by category for clarity.
 
 ##  Matrix Multiplication
 - [naiveMatrixMultiply.cpp](https://github.com/ndevcode/cuda/blob/main/code/naiveMatrixMultiply.cpp)  
-  CPU-based naive matrix multiplication for baseline comparison.
+  GPU-based naive matrix multiplication for baseline comparison.
 
 - [matmul.cpp](https://github.com/ndevcode/cuda/blob/main/code/matmul.cpp)  
-  Optimized CUDA matrix multiplication (GEMM-like), exploring shared memory, tiling techniques, and memory coalescing.
+  CUDA shared memory based matrix multiplication 
 
 ---
 
@@ -64,8 +64,6 @@ The projects are grouped by category for clarity.
 - [utility.hpp](https://github.com/ndevcode/cuda/blob/main/code/utility.hpp)  
   Common utility functions and abstractions used across multiple CUDA projects.
 
-- [cuda_autograd](https://github.com/ndevcode/cuda/blob/main/code/cuda_autograd)  
-  Experimental beginnings of an automatic differentiation system for CUDA, exploring GPU-based gradient computation.
 
 ---
 
