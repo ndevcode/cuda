@@ -3,6 +3,11 @@
 
 This repository contains a collection of CUDA and C++ projects that I have implemented to explore GPU programming, parallel algorithms, and performance optimization.  
 The projects are grouped by category for clarity.
+---
+
+##  Deep Learning
+- [Transformer Softmax Attention](https://github.com/ndevcode/cuda/blob/main/code/softmax_attention.cu)  
+  GPU-based softmax attention computation, illustrating use of matrix multiplication and per query softmax computation.
 
 ---
 
