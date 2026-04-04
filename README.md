@@ -28,7 +28,7 @@ The projects are grouped by category for clarity.
   CUDA shared memory based matrix multiplication
 
 - [gemm4.cu](https://github.com/ndevcode/cuda/blob/main/code/gemm4.cu)
-  Matrix multiplication where each thread does 4 multiplications instead of 1 with the same shared memory
+   Matrix multiplication where each thread does 4 multiplications instead of 1 with the same shared memory
 
 ---
 
