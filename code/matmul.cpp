@@ -49,7 +49,7 @@ struct MatmulTiled {
 template <int BLOCK_SIZE, typename ComputeFn>
 __global__ void matmul_cache(const float* A, const float* B, float* MULT, int a_ncols, ComputeFn compute) {
     //cache
-    __shared__ float tempA[block_size][block_size], tempB[block_size][block_size];
+    __shared__ float tempA[block_size][block_size], tempB[block_size][block_size+1];
 
     int idx = blockDim.x * blockIdx.x + threadIdx.x;
     int idy = blockDim.y * blockIdx.y + threadIdx.y;
