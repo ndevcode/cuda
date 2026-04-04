@@ -25,7 +25,10 @@ The projects are grouped by category for clarity.
   GPU-based naive matrix multiplication for baseline comparison.
 
 - [matmul.cpp](https://github.com/ndevcode/cuda/blob/main/code/matmul.cpp)  
-  CUDA shared memory based matrix multiplication 
+  CUDA shared memory based matrix multiplication
+
+- [gemm4.cu](https://github.com/ndevcode/cuda/blob/main/code/gemm4.cu)
+  CUDA shared memory based matrix multiplication where each thread does 4 multiplications instead of 1 with the same shared memory
 
 ---
 
