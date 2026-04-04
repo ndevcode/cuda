@@ -59,11 +59,3 @@ The projects are grouped by category for clarity.
   CPU-based implementation of blob detection using Determinant of Hessian (DoH), Laplacian of Gaussian (LoG), and Difference of Gaussian (DoG) with scale-space non-maximum suppression.
 ---
 
-##  Notes
-- Each project highlights **parallel programming principles**:  
-  - memory coalescing  
-  - shared memory tiling  
-  - warp divergence avoidance  
-  - profiling and benchmarking with custom timers  
-
----
