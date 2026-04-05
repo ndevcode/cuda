@@ -9,6 +9,8 @@ The projects are grouped by category for clarity.
 - [Transformer Softmax Attention](https://github.com/ndevcode/cuda/blob/main/code/softmax_attention.cu)  
   GPU-based softmax attention computation, illustrating use of matrix multiplication and per query softmax computation.
 
+- [Categorical cross entropy loss](https://github.com/ndevcode/cuda/blob/main/code/entropy_loss_categorical.cu)
+  For a MLP output of shape N X C, where is N is batch size and C is the number of categories and true labels of shape N X 1 find the cross entropy loss.
 ---
 
 ##  Reduction Algorithms
