@@ -11,6 +11,9 @@ The projects are grouped by category for clarity.
 
 - [Categorical cross entropy loss](https://github.com/ndevcode/cuda/blob/main/code/entropy_loss_categorical.cu)
   For a MLP output of shape N X C, where is N is batch size and C is the number of categories and true labels of shape N X 1 find the cross entropy loss.
+
+- [INT8 Quantized Matmul](https://github.com/ndevcode/cuda/blob/main/code/int8_qm_6.cu)
+  Implement a quantized matrix multiplication program for 8-bit signed integer matrices.
 ---
 
 ##  Reduction Algorithms
