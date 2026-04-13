@@ -9,7 +9,7 @@ Coalesced stores via sC staging — doubled store throughput
 __launch_bounds__(256, 4) — forced register budget, tripled occupancy
 */
 
-Hoisted zero-point correction — removed 2 subtracts per MAC from inner loop
+//nvcc -arch=sm_89 -x cu int8_qm_6.cu
 #include <iostream>
 #include <chrono>
 #include <cassert>
@@ -63,92 +63,92 @@ void kernel_1(const int8_t* A_ptr, const int8_t* B_ptr, int8_t* C_ptr,
                          int zA, int zB, int zC,
                          const int* colsum)
 {
-        constexpr int REG     = TILE / TT;
-        constexpr int THREADS = TT * TT;
-        constexpr int H       = THREADS / TILE;
-        constexpr int LOADS   = TILE / H;
+    constexpr int REG     = TILE / TT;
+    constexpr int THREADS = TT * TT;
+    constexpr int H       = THREADS / TILE;
+    constexpr int LOADS   = TILE / H;
 
-        MatrixView<const int8_t> A((int8_t*)A_ptr, M, K);
-        MatrixView<const int8_t> B((int8_t*)B_ptr, K, N);
-        MatrixView<int8_t>       C(C_ptr, M, N);
+    MatrixView<const int8_t> A((int8_t*)A_ptr, M, K);
+    MatrixView<const int8_t> B((int8_t*)B_ptr, K, N);
+    MatrixView<int8_t>       C(C_ptr, M, N);
 
-        // sA[row][k]  - k contiguous (natural layout)
-        // sB[col][k]  - k contiguous (transposed from B[k][col])
-        __shared__ int8_t sA[TILE][TILE];
-        __shared__ int8_t sB[TILE][TILE+4];
+    // sA[row][k]  - k contiguous (natural layout)
+    // sB[col][k]  - k contiguous (transposed from B[k][col])
+    __shared__ int8_t sA[TILE][TILE];
+    __shared__ int8_t sB[TILE][TILE+4];
 
-        int rC[REG][REG] = {};
-        int rowsum[REG]  = {};
+    int rC[REG][REG] = {};
+    int rowsum[REG]  = {};
 
-        int block_row = blockIdx.y * TILE;
-        int block_col = blockIdx.x * TILE;
+    int block_row = blockIdx.y * TILE;
+    int block_col = blockIdx.x * TILE;
 
-        int tidx = threadIdx.x % TT;
-        int tidy = threadIdx.x / TT;
+    int tidx = threadIdx.x % TT;
+    int tidy = threadIdx.x / TT;
 
-        for (int rk = 0; rk < (K + TILE - 1) / TILE; ++rk)
+    for (int rk = 0; rk < (K + TILE - 1) / TILE; ++rk)
+    {
+        // ---- cooperative load ----
         {
-                // ---- cooperative load ----
-                {
-                        int ltx = threadIdx.x % TILE;
-                        int lty = threadIdx.x / TILE;
+            int ltx = threadIdx.x % TILE;
+            int lty = threadIdx.x / TILE;
 
-                        for (int i = 0; i < LOADS; ++i)
-                        {
-                                int local_row = i * H + lty;
+            for (int i = 0; i < LOADS; ++i)
+            {
+                int local_row = i * H + lty;
 
-                                // A: store naturally as sA[row][k]
-                                int a_row = block_row + local_row;
-                                int a_col = rk * TILE + ltx;
-                                sA[local_row][ltx] =
-                                        (a_row < M && a_col < K) ? A[a_row][a_col] : 0;
+                // A: store naturally as sA[row][k]
+                int a_row = block_row + local_row;
+                int a_col = rk * TILE + ltx;
+                sA[local_row][ltx] =
+                    (a_row < M && a_col < K) ? A[a_row][a_col] : 0;
 
-                                // B: load B[k][col], store TRANSPOSED as sB[col][k]
-                                int b_row = rk * TILE + local_row;  // k index
-                                int b_col = block_col + ltx;         // col index
-                                int8_t b_val = (b_row < K && b_col < N) ? B[b_row][b_col] : 0;
-                                sB[ltx][local_row] = b_val;          // transposed!
-                        }
-                }
-
-                __syncthreads();
-
-                // ---- dp4a outer-product, k steps by 4 ----
-                for (int ik = 0; ik < TILE; ik += 4)
-                {
-                        int rA[REG], rB[REG];  // each holds 4 packed int8 values
-
-#pragma unroll
-                        for (int i = 0; i < REG; ++i)
-                        {
-                                // 4 consecutive k-values for this row of A
-                                rA[i] = *reinterpret_cast<const int*>(&sA[i * TT + tidy][ik]);
-                                // 4 consecutive k-values for this col of B (transposed)
-                                rB[i] = *reinterpret_cast<const int*>(&sB[i * TT + tidx][ik]);
-                        }
-
-#pragma unroll
-                        for (int i = 0; i < REG; ++i)
-                        {
-                                // rowsum: dot product with {1,1,1,1} packed as 0x01010101
-                                rowsum[i] = __dp4a(rA[i], 0x01010101, rowsum[i]);
-
-#pragma unroll
-                                for (int j = 0; j < REG; ++j)
-                                        rC[i][j] = __dp4a(rA[i], rB[j], rC[i][j]);
-                        }
-                }
-
-                __syncthreads();
+                // B: load B[k][col], store TRANSPOSED as sB[col][k]
+                int b_row = rk * TILE + local_row;  // k index
+                int b_col = block_col + ltx;         // col index
+                int8_t b_val = (b_row < K && b_col < N) ? B[b_row][b_col] : 0;
+                sB[ltx][local_row] = b_val;          // transposed!
+            }
         }
 
-        // ---- zero-point correction + quantize + coalesced store ----
-        //int correction = K * zA * zB;
+        __syncthreads();
 
-        __shared__ int8_t sC_data[TILE * TILE];
-        MatrixView<int8_t> sC(sC_data, TILE, TILE);
+        // ---- dp4a outer-product, k steps by 4 ----
+        for (int ik = 0; ik < TILE; ik += 4)
+        {
+            int rA[REG], rB[REG];  // each holds 4 packed int8 values
 
-        for (int i = 0; i < REG; ++i)
+            #pragma unroll
+            for (int i = 0; i < REG; ++i)
+            {
+                // 4 consecutive k-values for this row of A
+                rA[i] = *reinterpret_cast<const int*>(&sA[i * TT + tidy][ik]);
+                // 4 consecutive k-values for this col of B (transposed)
+                rB[i] = *reinterpret_cast<const int*>(&sB[i * TT + tidx][ik]);
+            }
+
+            #pragma unroll
+            for (int i = 0; i < REG; ++i)
+            {
+                // rowsum: dot product with {1,1,1,1} packed as 0x01010101
+                rowsum[i] = __dp4a(rA[i], 0x01010101, rowsum[i]);
+
+                #pragma unroll
+                for (int j = 0; j < REG; ++j)
+                    rC[i][j] = __dp4a(rA[i], rB[j], rC[i][j]);
+            }
+        }
+
+        __syncthreads();
+    }
+
+    // ---- zero-point correction + quantize + coalesced store ----
+    //int correction = K * zA * zB;
+
+    __shared__ int8_t sC_data[TILE * TILE];
+    MatrixView<int8_t> sC(sC_data, TILE, TILE);
+
+    for (int i = 0; i < REG; ++i)
     {
         for (int j = 0; j < REG; ++j)
         {
@@ -166,20 +166,20 @@ void kernel_1(const int8_t* A_ptr, const int8_t* B_ptr, int8_t* C_ptr,
         }
     }
 
-        __syncthreads();
+    __syncthreads();
 
+    {
+        int ltx = threadIdx.x % TILE;
+        int lty = threadIdx.x / TILE;
+
+        for (int i = 0; i < LOADS; ++i)
         {
-                int ltx = threadIdx.x % TILE;
-                int lty = threadIdx.x / TILE;
-
-                for (int i = 0; i < LOADS; ++i)
-                {
-                        int out_row = block_row + i * H + lty;
-                        int out_col = block_col + ltx;
-                        if (out_row < M && out_col < N)
-                                C[out_row][out_col] = sC[i * H + lty][ltx];
-                }
+            int out_row = block_row + i * H + lty;
+            int out_col = block_col + ltx;
+            if (out_row < M && out_col < N)
+                C[out_row][out_col] = sC[i * H + lty][ltx];
         }
+    }
 }
 
 extern "C" void solve(const int8_t* A, const int8_t* B, int8_t* C,
@@ -231,3 +231,4 @@ int main() {
     float runtime = timer.elapsedTimeUs();
     cout << "Runtime for GPU batched matrix mult is " << runtime << "us" << endl;
 }
+
