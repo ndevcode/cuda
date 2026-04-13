@@ -1,4 +1,15 @@
 //nvcc -arch=sm_89 -x cu int8_qm_6.cu
+/* The optimizations that got #1, in order of impact:
+
+64×64 tile with 4×4 register tile (was 32×32 with 2×2) — 4× better compute:load ratio
+dp4a intrinsic — 4 MACs per instruction, 4× fewer inner loop iterations
+Transposed sB layout — enabled contiguous k-packing for dp4a
+sB padding by 4 — eliminated 16-way shared memory bank conflicts
+Coalesced stores via sC staging — doubled store throughput
+__launch_bounds__(256, 4) — forced register budget, tripled occupancy
+*/
+
+Hoisted zero-point correction — removed 2 subtracts per MAC from inner loop
 #include <iostream>
 #include <chrono>
 #include <cassert>
