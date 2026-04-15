@@ -33,9 +33,10 @@ The projects are grouped by category for clarity.
   CUDA shared memory based matrix multiplication
 
 - [gemm4.cu](https://github.com/ndevcode/cuda/blob/main/code/gemm4.cu)
-
   Matrix multiplication where each thread does 4 multiplications instead of 1 with the same shared memory
 
+- [gemm_outer_product.cu](https://github.com/ndevcode/cuda/blob/main/code/gemm_outer_product.cu)
+  Matrix multiplication but compute outer product in a register tile rather than computing dot products.
 ---
 
 ## Fast Fourier Transform (FFT)
