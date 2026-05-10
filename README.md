@@ -47,7 +47,7 @@ The projects are grouped by category for clarity.
 
 ---
 
-## Logistic Regression 
+## Numerical Computing
 - [logistic_regression.cu](https://github.com/ndevcode/cuda/blob/main/code/logisticRegression.cu)
   Solve logistic regression for a small problem where the linear solve can be done on a single thread.
 ---
