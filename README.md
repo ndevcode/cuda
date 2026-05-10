@@ -47,6 +47,11 @@ The projects are grouped by category for clarity.
 
 ---
 
+## Logistic Regression 
+- [logistic_regression.cu](https://github.com/ndevcode/cuda/blob/main/code/logisticRegression.cu)
+  Solve logistic regression for a small problem where the linear solve can be done on a single thread.
+---
+
 ##  Image Processing & Computer Vision
 - [sobel.cpp](https://github.com/ndevcode/cuda/blob/main/code/sobel.cpp)  
   Edge detection using Sobel filters on GPU.
