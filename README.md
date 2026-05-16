@@ -22,9 +22,13 @@ The projects are grouped by category for clarity.
 
 - [blelloch_prefixsum.cpp](https://github.com/ndevcode/cuda/blob/main/code/blelloch_prefixsum.cpp)  
   Parallel prefix-sum (scan) implementation using the Blelloch upsweep/downsweep algorithm with multi-block CUDA support.
+---
 
+## Prefix scan 
 - [prefix_sum_4.cu](https://github.com/ndevcode/cuda/blob/main/code/prefix_sum_4.cu)
-  Generic prefix scan to compute prefix sums/products etc. 
+  Generic prefix scan to compute prefix sums/products etc.
+
+- 
 ---
 
 ##  Matrix Multiplication
