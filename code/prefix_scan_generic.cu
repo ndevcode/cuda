@@ -1,18 +1,3 @@
-#include <iostream>
-#include <chrono>
-#include <cassert>
-#include <cmath>
-#include <cfloat>
-
-#include <cuda_runtime.h>
-#include <vector_types.h>
-#include <cooperative_groups.h>
-
-#include "ndev_cuda_utility.hpp"
-#include "memory_alloc.h"
-#include "cuda_timer.h"
-
-using namespace std;
 
 struct Add {
     template <typename T>
@@ -44,7 +29,7 @@ __device__ T warp_scan_inclusive(T val, Op op) {
 }
 
 template <typename T, typename Op>
-__device__ float warp_scan_exclusive(T val, Op op, T identity) {
+__device__ T warp_scan_exclusive(T val, Op op, T identity) {
     T inclusive = warp_scan_inclusive(val,op);
     int lane = threadIdx.x & (warpSize - 1);
     return lane == 0 ? identity :  __shfl_up_sync(0xffffffff, inclusive, 1);
@@ -98,96 +83,67 @@ __device__ T block_scan_exclusive(T val, Op op, T identity, T* smem) {
     return smem[tid - 1];
 }
 
-template <int BLOCKSIZE>
-__global__ void scan_blocks(const float* input, float* output, float* block_sums, int N) {
-    __shared__ float smem[BLOCKSIZE];
+template <typename T, typename Op, int BLOCKSIZE>
+__global__ void scan_kernel(const T* input, T* output, T* block_sums, int N, Op op, T identity) {
+    __shared__ T smem[BLOCKSIZE];
     int gid = blockDim.x * blockIdx.x + threadIdx.x;
 
-    float val = (gid < N) ? input[gid] : 0.0f;
+    T val = (gid < N) ? input[gid] : identity;
 
-    float scan = block_scan_inclusive<float, Add, BLOCKSIZE> (val, Add{}, smem);
+    T scan = block_scan_inclusive<T, Op, BLOCKSIZE> (val, op, smem);
 
     if (gid < N) {
         output[gid] = scan;
     }
 
-    int last = min(blockDim.x , N - blockIdx.x * blockDim.x) - 1;
+    int remaining = N - blockIdx.x * blockDim.x;
 
-    if (threadIdx.x == last) {
+    int valid = min(BLOCKSIZE, remaining);
+
+    if (block_sums != nullptr && threadIdx.x == valid - 1) {
         block_sums[blockIdx.x] = scan;
     }
 }
 
-template <int BLOCKSIZE>
-__global__ void uniform_add(const float* block_prefix, float* output, int N) {
+template <typename T, typename Op, int BLOCKSIZE>
+__global__ void uniform_add(const T* block_prefix, T* output, int N, Op op) {
     int gid = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (gid >= N || blockIdx.x == 0) {
         return ;
     }
 
-    output[gid] += block_prefix[blockIdx.x-1];
+    output[gid] = op(output[gid],block_prefix[blockIdx.x-1]);
 }
 
-__global__ void kernel_2_hillis_steele(float* parr, int num_blocks) {
-    extern __shared__ float shmem[];
-    int tid = threadIdx.x;
+template <typename T, typename Op, int BLOCKSIZE>
+void device_scan(const T* input, T* output, int N, Op op, T identity) {
+    int num_blocks = (N + BLOCKSIZE - 1)/BLOCKSIZE;
 
-    shmem[tid] = (tid < num_blocks) ? parr[tid] : 0.0f;
-    __syncthreads();
+    if (num_blocks <= 1) {
+        scan_kernel<T,Op,BLOCKSIZE><<<1,BLOCKSIZE>>>(input, output, nullptr, N, op, identity);
+        return;
+    }
 
-    //Hillis-Steele scan
-    for (int offset = 1; offset < num_blocks; offset <<= 1) {
-        float val = (tid >= offset) ? shmem[tid - offset] : 0.0f;
-        __syncthreads();
-        shmem[tid] += val;
-        __syncthreads();
-    }
-    if (tid < num_blocks) {
-        parr[tid] = shmem[tid];
-    }
+    T* block_sums;
+    T* scanned_block_sums;
+
+    cudaMalloc(&block_sums, num_blocks * sizeof(T));
+    cudaMalloc(&scanned_block_sums, num_blocks * sizeof(T));
+
+    scan_kernel<T,Op,BLOCKSIZE><<<num_blocks,BLOCKSIZE>>>(input, output, block_sums, N, op, identity);
+
+    //recursive
+    device_scan<T,Op,BLOCKSIZE>(block_sums, scanned_block_sums, num_blocks, op, identity);
+
+    uniform_add<T,Op,BLOCKSIZE><<<num_blocks, BLOCKSIZE>>>(scanned_block_sums, output, N, op);
+
+    cudaFree(block_sums);
+    cudaFree(scanned_block_sums);
 }
 
 extern "C" void solve(const float* input, float* output, int N) {
     constexpr int BLOCKSIZE = 256;
-
-    dim3 block(BLOCKSIZE);
-    dim3 grid((N + block.x - 1)/block.x);
-
-    float *parr;
-    cudaMalloc(&parr,grid.x*sizeof(float));
-
-    //phase 1 : block reduction
-    scan_blocks<BLOCKSIZE><<<grid,block>>>(input,output,parr,N);
+    device_scan<float,Add,BLOCKSIZE>(input,output,N,Add{},0.0f);
     cudaDeviceSynchronize();
-
-    int num_threads = 1;
-    for (; num_threads < grid.x; num_threads <<= 1);
-
-    //phase 2 : overall prefix sum
-    kernel_2_hillis_steele<<<1,num_threads,num_threads*sizeof(float)>>>(parr,grid.x);
-    cudaDeviceSynchronize();
-
-    //phase 3 : send this data to the blocks
-    uniform_add<BLOCKSIZE><<<grid,block>>>(parr,output,N);
-
-    cudaFree(parr);
-}
-
-int main() {
-    MemoryManager mmgr;
-    //const int n = (1 << 4) + 7;
-    const int n = 250000;
-    auto input = mmgr.allocate_host_and_device<float>(n);
-    auto output = mmgr.allocate_host_and_device<float>(n);
-    fillArrayRandom(input.hostPtr,n,true, 331);
-
-    input.copy_to_device(n);
-
-    CudaTimer timer;
-    timer.start();
-    solve(input.devicePtr,output.devicePtr,n);
-    timer.stop();
-    float runtime = timer.elapsedTimeUs();
-    cout << "Runtime for GPU prefix sum is " << runtime << "us" << endl;
 }
