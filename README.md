@@ -26,9 +26,10 @@ The projects are grouped by category for clarity.
 
 ## Prefix scan 
 - [prefix_sum_4.cu](https://github.com/ndevcode/cuda/blob/main/code/prefix_sum_4.cu)
-  Generic prefix scan to compute prefix sums/products etc.
+  prefix scan to compute prefix sums/products etc.
 
-- 
+- [prefix_sum_generic.cu](https://github.com/ndevcode/cuda/blob/main/code/prefix_scan_generic.cu)
+  Generic prefix scan to compute prefix sums
 ---
 
 ##  Matrix Multiplication
