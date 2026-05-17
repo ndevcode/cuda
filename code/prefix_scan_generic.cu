@@ -1,3 +1,18 @@
+#include <iostream>
+#include <chrono>
+#include <cassert>
+#include <cmath>
+#include <cfloat>
+
+#include <cuda_runtime.h>
+#include <vector_types.h>
+#include <cooperative_groups.h>
+
+#include "ndev_cuda_utility.hpp"
+#include "memory_alloc.h"
+#include "cuda_timer.h"
+
+using namespace std;
 
 struct Add {
     template <typename T>
@@ -142,6 +157,29 @@ void device_scan(const T* input, T* output, int N, Op op, T identity) {
     cudaFree(scanned_block_sums);
 }
 
+extern "C" void solve(const float* input, float* output, int N) {
+    constexpr int BLOCKSIZE = 256;
+    device_scan<float,Add,BLOCKSIZE>(input,output,N,Add{},0.0f);
+    cudaDeviceSynchronize();
+}
+
+int main() {
+    MemoryManager mmgr;
+    //const int n = (1 << 4) + 7;
+    const int n = 250000;
+    auto input = mmgr.allocate_host_and_device<float>(n);
+    auto output = mmgr.allocate_host_and_device<float>(n);
+    fillArrayRandom(input.hostPtr,n,true, 331);
+
+    input.copy_to_device(n);
+
+    CudaTimer timer;
+    timer.start();
+    solve(input.devicePtr,output.devicePtr,n);
+    timer.stop();
+    float runtime = timer.elapsedTimeUs();
+    cout << "Runtime for GPU prefix sum is " << runtime << "us" << endl;
+}
 extern "C" void solve(const float* input, float* output, int N) {
     constexpr int BLOCKSIZE = 256;
     device_scan<float,Add,BLOCKSIZE>(input,output,N,Add{},0.0f);
