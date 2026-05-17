@@ -30,6 +30,9 @@ The projects are grouped by category for clarity.
 
 - [prefix_sum_generic.cu](https://github.com/ndevcode/cuda/blob/main/code/prefix_scan_generic.cu)
   Generic prefix scan to compute prefix sums
+
+- [nearest_neighbour_2.cu](https://github.com/ndevcode/cuda/blob/main/code/nearest_neighbour_2.cu)
+  Approximate nearest neighbour using prefix scan, radix sort and windowed search
 ---
 
 ##  Matrix Multiplication
