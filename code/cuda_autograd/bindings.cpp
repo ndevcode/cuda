@@ -60,4 +60,31 @@ PYBIND11_MODULE(my_cuda_ops,m) {
 
         return result;
     });
+
+    m.def("matmul", [](py::array_t<float> a, py::array_t<float> b) {
+        py::buffer_info ba = a.request();
+        py::buffer_info bb = b.request();
+
+        int M = ba.shape[0], K = ba.shape[1];
+        int N = bb.shape[1];
+
+        MemoryManager mmgr;
+        auto dA = mmgr.allocate_host_and_device<float>(M * K);
+        auto dB = mmgr.allocate_host_and_device<float>(K * N);
+        auto dC = mmgr.allocate_host_and_device<float>(M * N);
+
+        std::memcpy(dA.hostPtr, ba.ptr, M * K * sizeof(float));
+        std::memcpy(dB.hostPtr, bb.ptr, K * N * sizeof(float));
+
+        dA.copy_to_device(M * K);
+        dB.copy_to_device(K * N);
+
+        matmul(dA.devicePtr, dB.devicePtr, dC.devicePtr, M, K, N);
+
+        dC.copy_to_host(M * N);
+
+        auto result = py::array_t<float>({M, N});
+        std::memcpy(result.mutable_data(), dC.hostPtr, M * N * sizeof(float));
+        return result;
+    });
 }

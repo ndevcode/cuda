@@ -7,7 +7,7 @@
 #include <device_launch_parameters.h>
 
 #include "memory_alloc.h"
-#include "utility.hpp"
+#include "ndev_cuda_utility.hpp"
 #include "cuda_timer.h"
 
 using namespace std;
@@ -251,7 +251,8 @@ std::pair<float*, float*> runCudaKernelExperiments(MemoryManager& mmgr,
     }
 
     {
-        CudaTimer timer; 
+        CudaTimer timer;
+        timer.start(); 
         input.copy_to_device(numPixels);
         timer.stop();
         cout << "H2D copy times : " << timer.elapsedTimeUs() << " us" << endl;
@@ -264,6 +265,7 @@ std::pair<float*, float*> runCudaKernelExperiments(MemoryManager& mmgr,
 
     {
         CudaTimer timer;
+        timer.start();
 
         kernel<<<gridSize, blockSize>>>(
                 input.devicePtr,
@@ -282,6 +284,7 @@ std::pair<float*, float*> runCudaKernelExperiments(MemoryManager& mmgr,
 
     {
         CudaTimer timer;
+        timer.start();
         magnitude.copy_to_host(numPixels);
         direction.copy_to_host(numPixels);
 

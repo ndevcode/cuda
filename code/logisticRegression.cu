@@ -36,8 +36,8 @@ struct MatrixView {
 __device__ void solve_linear(const float* H_ptr, const float* grad, float* delta,
                              float* A_ptr, int d, float damping) {
         const int W = d + 1;
-    MatrixView<const float> H(H_ptr, d, d + 1);
-    MatrixView<float> A(A_ptr, d, d);
+    const float* H = H_ptr;   // d x d, stride d
+    float* A = A_ptr;         // augmented d x (d+1), stride W
 
         // Augmented matrix [H + damping*I | grad]
         for (int i = 0; i < d; i++) {

@@ -2,7 +2,7 @@
 #include <iostream>
 #include <device_launch_parameters.h>
 #include "memory_alloc.h"
-#include "utility.hpp"
+#include "ndev_cuda_utility.hpp"
 
 using namespace std;
 

@@ -4,7 +4,7 @@
 #include <cassert>
 #include <device_launch_parameters.h>
 #include "memory_alloc.h"
-#include "utility.hpp"
+#include "ndev_cuda_utility.hpp"
 #include "cuda_timer.h"
 
 using namespace std;

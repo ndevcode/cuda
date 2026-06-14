@@ -554,6 +554,7 @@ runCudaKernelExperiments(MemoryManager& mmgr,
     //Step 0 : copy from host to device memory
     {
         CudaTimer timer; 
+        timer.start(); 
         input.copy_to_device(numPixels);
         timer.stop();
         float tt = timer.elapsedTimeUs();
@@ -569,7 +570,8 @@ runCudaKernelExperiments(MemoryManager& mmgr,
 
     //Step 1 : horizontal Gaussian blurring
     {
-        CudaTimer timer;
+        CudaTimer timer; 
+        timer.start();
         hBlurrer<<<gridSize, blockSize>>>(
                 input.devicePtr,
                 edges.devicePtr,
@@ -589,7 +591,8 @@ runCudaKernelExperiments(MemoryManager& mmgr,
 
     //Step 2 : vertical Gaussian blurring
     {
-        CudaTimer timer;
+        CudaTimer timer; 
+        timer.start();
         vBlurrer<<<gridSize, blockSize>>>(
                 edges.devicePtr,
                 blurred.devicePtr,
@@ -609,7 +612,8 @@ runCudaKernelExperiments(MemoryManager& mmgr,
 
     //Step 3 : find magnitude and orientation via Sobel
     {
-        CudaTimer timer;
+        CudaTimer timer; 
+        timer.start();
         kernel<<<gridSize, blockSize>>>(
                 blurred.devicePtr,
                 magnitude.devicePtr,
@@ -629,7 +633,8 @@ runCudaKernelExperiments(MemoryManager& mmgr,
 
     //Step 4 : do non maximum suppression 
     {
-        CudaTimer timer;
+        CudaTimer timer; 
+        timer.start();
         finder<<<gridSize, blockSize>>>(
                 magnitude.devicePtr,
                 direction.devicePtr,
@@ -649,7 +654,8 @@ runCudaKernelExperiments(MemoryManager& mmgr,
 
     //Step 5 : find maximum magnitude
     {
-        CudaTimer timer;
+        CudaTimer timer; 
+        timer.start();
         maxMagnitude = getMaxMagnitude(mmgr,reducer,nms.devicePtr,height,width);
         timer.stop();
         float tt = timer.elapsedTimeUs();
@@ -665,7 +671,8 @@ runCudaKernelExperiments(MemoryManager& mmgr,
     {
         float highThreshold = 0.2f * maxMagnitude, lowThreshold = 0.1f * maxMagnitude;
         //cout << "high threshold parallel : " << highThreshold << " low threshold parallel : " << lowThreshold << endl;
-        CudaTimer timer;
+        CudaTimer timer; 
+        timer.start();
         thinner<<<gridSize, blockSize>>>(
                 nms.devicePtr,
                 height,
@@ -686,7 +693,8 @@ runCudaKernelExperiments(MemoryManager& mmgr,
 
     //Step 7 : hysteresis
     {
-        CudaTimer timer;
+        CudaTimer timer; 
+        timer.start();
         hysteresis_bfs_cuda(mmgr,seeder,bfs,cleaner,edges.devicePtr,height,width);
         timer.stop();
         float tt = timer.elapsedTimeUs();
@@ -699,7 +707,8 @@ runCudaKernelExperiments(MemoryManager& mmgr,
 
     //Step 8 :  copy memory from device to host
     {
-        CudaTimer timer;
+        CudaTimer timer; 
+        timer.start();
         edges.copy_to_host(numPixels);
         magnitude.copy_to_host(numPixels);
         direction.copy_to_host(numPixels);

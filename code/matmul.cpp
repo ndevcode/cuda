@@ -4,7 +4,7 @@
 #include <functional>
 #include <device_launch_parameters.h>
 #include "memory_alloc.h"
-#include "utility.hpp"
+#include "ndev_cuda_utility.hpp"
 
 using namespace std;
 
@@ -37,7 +37,7 @@ __global__ void matmul(const float* A, const float* B, float* MULT, int n, Compu
 
 template <int BLOCK_SIZE>
 struct MatmulTiled {
-    __device__ float operator()(float tempA[BLOCK_SIZE][BLOCK_SIZE], float tempB[BLOCK_SIZE][BLOCK_SIZE], int row, int col) const {
+    __device__ float operator()(float tempA[BLOCK_SIZE][BLOCK_SIZE], float tempB[BLOCK_SIZE][BLOCK_SIZE + 1], int row, int col) const {
         float sum = 0;
         for (int j = 0; j < BLOCK_SIZE; j++) {
             sum += tempA[row][j] * tempB[j][col];

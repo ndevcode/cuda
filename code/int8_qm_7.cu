@@ -1,15 +1,4 @@
 //nvcc -arch=sm_89 -x cu int8_qm_6.cu
-/* The optimizations that got #1, in order of impact:
-
-64×64 tile with 4×4 register tile (was 32×32 with 2×2) — 4× better compute:load ratio
-dp4a intrinsic — 4 MACs per instruction, 4× fewer inner loop iterations
-Transposed sB layout — enabled contiguous k-packing for dp4a
-sB padding by 4 — eliminated 16-way shared memory bank conflicts
-Coalesced stores via sC staging — doubled store throughput
-__launch_bounds__(256, 4) — forced register budget, tripled occupancy
-*/
-
-//nvcc -arch=sm_89 -x cu int8_qm_6.cu
 #include <iostream>
 #include <chrono>
 #include <cassert>
@@ -56,14 +45,14 @@ __global__ void compute_colsum(const int8_t* B, int* colsum, int K, int N) {
 }
 
 template <int TILE, int TT>
-__global__ __launch_bounds__(256, 4)
+__global__ __launch_bounds__(256, 4) 
 void kernel_1(const int8_t* A_ptr, const int8_t* B_ptr, int8_t* C_ptr,
                          int M, int N, int K,
                          float scale_A, float scale_B, float scale_C,
                          int zA, int zB, int zC,
                          const int* colsum)
 {
-    constexpr int REG     = TILE / TT;
+    constexpr int REG     = 4;
     constexpr int THREADS = TT * TT;
     constexpr int H       = THREADS / TILE;
     constexpr int LOADS   = TILE / H;
@@ -121,10 +110,10 @@ void kernel_1(const int8_t* A_ptr, const int8_t* B_ptr, int8_t* C_ptr,
             #pragma unroll
             for (int i = 0; i < REG; ++i)
             {
-                // 4 consecutive k-values for this row of A
-                rA[i] = *reinterpret_cast<const int*>(&sA[i * TT + tidy][ik]);
-                // 4 consecutive k-values for this col of B (transposed)
-                rB[i] = *reinterpret_cast<const int*>(&sB[i * TT + tidx][ik]);
+                int row_idx = i * TT + tidy;
+                int col_idx = i * TT + tidx;
+                rA[i] = *(int*)&sA[row_idx][ik];
+                rB[i] = *(int*)&sB[col_idx][ik];
             }
 
             #pragma unroll
@@ -187,8 +176,8 @@ extern "C" void solve(const int8_t* A, const int8_t* B, int8_t* C,
                       float scale_A, float scale_B, float scale_C,
                       int zero_point_A, int zero_point_B, int zero_point_C)
 {
-    constexpr int TILE = 64;
-    constexpr int TT   = 16;
+    constexpr int TILE = 32;
+    constexpr int TT   = 8;
 
     int* d_colsum;
     cudaMalloc(&d_colsum, N * sizeof(int));
@@ -225,10 +214,9 @@ int main() {
     CudaTimer timer;
     timer.start();
     solve(A.devicePtr, B.devicePtr, C.devicePtr, M, N, K,
-                      scale_A, scale_B, scale_C,
+                      scale_A, scale_B, scale_C, 
                       zero_point_A, zero_point_B, zero_point_C);
     timer.stop();
     float runtime = timer.elapsedTimeUs();
     cout << "Runtime for GPU batched matrix mult is " << runtime << "us" << endl;
 }
-

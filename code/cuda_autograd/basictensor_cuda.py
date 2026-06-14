@@ -1,6 +1,13 @@
 import numpy as np
 import my_cuda_ops
 
+def _gpu_matmul(a, b):
+    a = np.asarray(a, dtype=np.float32)
+    b = np.asarray(b, dtype=np.float32)
+    if a.ndim == 2 and b.ndim == 2 and a.shape[1] == b.shape[0]:
+        return my_cuda_ops.matmul(np.ascontiguousarray(a), np.ascontiguousarray(b))
+    return a @ b
+
 class BasicTensor :
     """Stores a single BasicTensor value and its gradient"""
 
@@ -67,11 +74,11 @@ class BasicTensor :
 
     def __matmul__(self,other) :
         other = other if isinstance(other,BasicTensor) else BasicTensor(other)
-        out = BasicTensor(value = self.value @ other.value, _children = (self,other), _what='@')
+        out = BasicTensor(value = _gpu_matmul(self.value, other.value), _children = (self,other), _what='@')
 
         def _backward() :
-            self.grad += out.grad @ other.value.T
-            other.grad += self.value.T @ out.grad if self.value.ndim > 1 else np.outer(self.value, out.grad)
+            self.grad += _gpu_matmul(out.grad, other.value.T)
+            other.grad += _gpu_matmul(self.value.T, out.grad) if self.value.ndim > 1 else np.outer(self.value, out.grad)
         out._backward = _backward
 
         return out

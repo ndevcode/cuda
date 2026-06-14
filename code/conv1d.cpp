@@ -5,7 +5,7 @@
 #include <chrono>
 #include <device_launch_parameters.h>
 #include "memory_alloc.h"
-#include "utility.hpp"
+#include "ndev_cuda_utility.hpp"
 
 using namespace std;
 
@@ -15,7 +15,7 @@ const int THREADS_PER_BLOCK = 1 << 7;
 __global__ void conv1d_algo1(int N, float* input, float *output) {
     int idx = blockDim.x * blockIdx.x + threadIdx.x;
     float result = 0;
-    for (int i = idx; i < min(idx + 3,N); i++) {
+    for (int i = idx; i < idx + 3; i++) {
         result += input[i];
     }
     output[idx] = result / 3.0;
@@ -55,7 +55,7 @@ int main() {
 
     {
         auto start = std::chrono::high_resolution_clock::now();
-        A.copy_to_device(DSIZE);
+        A.copy_to_device(DSIZE+2);
 
         conv1d_algo1 <<<grid,block>>> (DSIZE,A.devicePtr,Y.devicePtr);
         CUDA_CHECK(cudaPeekAtLastError()); // launch errors
@@ -74,7 +74,7 @@ int main() {
     }
     {
         auto start1 = std::chrono::high_resolution_clock::now();
-        B.copy_to_device(DSIZE);
+        B.copy_to_device(DSIZE+2);
         conv1d_algo2 <<<grid,block>>> (DSIZE,B.devicePtr,Z.devicePtr);
         CUDA_CHECK(cudaPeekAtLastError()); // launch errors
         CUDA_CHECK(cudaDeviceSynchronize());

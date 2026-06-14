@@ -26,7 +26,7 @@ struct ReduceOper {
 };
 
 template <typename Reducer>
-__global__ void maxKernelCUDA(Reducer& reducer, float *arr, float *out, int n) {
+__global__ void maxKernelCUDA(Reducer reducer, float *arr, float *out, int n) {
     __shared__ float shmem[1024];
 
     int gid = blockDim.x * blockIdx.x + threadIdx.x;
@@ -67,6 +67,7 @@ float maxElement(Reducer& reducer, HostDevicePair<float>& arr, HostDevicePair<fl
         dim3 gridSize((n + blockSize.x - 1)/ blockSize.x);
 
         CudaTimer timer;
+        timer.start();
         maxKernelCUDA<<<gridSize,blockSize>>>(reducer,arr.devicePtr,res.devicePtr,n);
 
         CUDA_CHECK(cudaPeekAtLastError());

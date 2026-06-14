@@ -3,7 +3,9 @@
 #include <iostream>
 #include <cuda_runtime.h> 
 
-#include "utility.hpp"
+#include "ndev_cuda_utility.hpp"
+
+#pragma once
 
 template <typename T>
 struct HostDevicePair {
