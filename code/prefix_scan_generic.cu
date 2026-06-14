@@ -180,8 +180,4 @@ int main() {
     float runtime = timer.elapsedTimeUs();
     cout << "Runtime for GPU prefix sum is " << runtime << "us" << endl;
 }
-extern "C" void solve(const float* input, float* output, int N) {
-    constexpr int BLOCKSIZE = 256;
-    device_scan<float,Add,BLOCKSIZE>(input,output,N,Add{},0.0f);
-    cudaDeviceSynchronize();
-}
+
