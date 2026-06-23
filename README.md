@@ -38,6 +38,16 @@ The default target is the Ada architecture (`sm_89`); adjust `-arch` for your GP
   second matmul with V. This is a correct, readable baseline; a fused FlashAttention version
   that avoids materializing the N X N score matrix is left as future work.
 
+- [ALiBi Attention](https://github.com/ndevcode/cuda/blob/main/code/alibi_attention_2.cu) -
+  Scaled dot-product attention with an ALiBi linear positional bias added to the scores before
+  the softmax, so position is encoded without any learned embeddings. Each block owns one query
+  row: the QK^T scores are formed with a warp reduction over the head dimension, the bias and
+  1/sqrt(d) scaling are applied in shared memory, and the softmax is a streaming reduction in
+  which a single warp shuffle carries the running maximum and sum together and rescales on the
+  fly, so the score row never needs a separate max pass. The weighted sum with V uses coalesced
+  lane-per-column reads reduced across the key warps without atomics, and the tile sizes are
+  template parameters.
+
 ---
 
 ## Parallel Scan and Reduction
