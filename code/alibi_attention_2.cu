@@ -9,9 +9,9 @@
 #include <vector_types.h>
 #include <cooperative_groups.h>
 
-#include "/home/ndev/cuda/apr24/ndev_cuda_utility.hpp"
-#include "/home/ndev/cuda/apr24/memory_alloc.h"
-#include "/home/ndev/cuda/apr24/cuda_timer.h"
+#include "ndev_cuda_utility.hpp"
+#include "memory_alloc.h"
+#include "cuda_timer.h"
 
 using namespace std;
 
