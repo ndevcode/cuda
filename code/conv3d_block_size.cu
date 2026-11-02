@@ -1,54 +1,49 @@
 //nvcc -O3 -arch=sm_89 -x cu conv3d_block_size.cu -o conv3d_block_size
-//
-// 3D convolution with the same kernel launched at two block sizes, plus a CPU reference.
-//
-// On an RTX 4060 (48 warp slots per SM) a 32x32 block is 32 warps, so only one block fits on
-// an SM and 16 slots stay idle (66% occupancy). A 16x16 block is 8 warps, so six blocks fit
-// and all 48 slots are busy. The work is identical, but the 16x16 launch is faster.
-#include <algorithm>
-#include <cassert>
-#include <chrono>
-#include <cmath>
+//compare 16x16 and 32x32 blocks for 3d convolution
 #include <iostream>
+#include <algorithm>
 #include <random>
+#include <cassert>
+#include <cmath>
+#include <chrono>
 #include <vector>
 
 #include <cuda_runtime.h>
 
-#include "cuda_timer.h"
 #include "memory_alloc.h"
 #include "ndev_cuda_utility.hpp"
+#include "cuda_timer.h"
 
 using namespace std;
 
-const int MAX_KERNEL_SIZE = 256;
+const int MAX_KERNEL_SIZE = 1 << 8;
 
-__constant__ float kernel_const[MAX_KERNEL_SIZE];
+__constant__ float kernel_dev[MAX_KERNEL_SIZE];
 
 template <typename T>
 struct RowView {
-    T* rowData_;
-    __host__ __device__ RowView(T* data) : rowData_(data) {}
-    __host__ __device__ T& operator[](int j) { return rowData_[j]; }
-    __host__ __device__ const T& operator[](int j) const { return rowData_[j]; }
+        T* rowData_;
+        __host__ __device__ RowView(T* data) : rowData_(data) {}
+        __host__ __device__ T& operator[](int j) { return rowData_[j]; }
+        __host__ __device__ const T& operator[](int j) const { return rowData_[j]; }
 };
 
 template <typename T>
 struct TwoDim {
-    T* data_;
-    int rows_, cols_;
-    __host__ __device__ TwoDim(T* data, int r, int c) : data_(data), rows_(r), cols_(c) {}
-    __host__ __device__ RowView<T> operator[](int i) { return RowView<T>(data_ + (i * cols_)); }
-    __host__ __device__ const RowView<T> operator[](int i) const { return RowView<T>(data_ + (i * cols_)); }
+        T* data_;
+        int rows_,cols_;
+        __host__ __device__ TwoDim(T* data, int r, int c) : data_(data), rows_(r), cols_(c) {}
+        __host__ __device__ RowView<T> operator[](int i) { return RowView<T>(data_ + (i * cols_)); }
+        __host__ __device__ const RowView<T> operator[](int i) const { return RowView<T>(data_ + (i * cols_)); }
 };
 
 template <typename T>
 struct MatrixView {
-    T* data_;
-    int rows_, cols_, depth_;
-    __host__ __device__ MatrixView(T* data, int r, int c, int d) : data_(data), rows_(r), cols_(c), depth_(d) {}
-    __host__ __device__ TwoDim<T> operator[](int i) { return TwoDim<T>(data_ + (i * (cols_ * depth_)), cols_, depth_); }
-    __host__ __device__ const TwoDim<T> operator[](int i) const { return TwoDim<T>(data_ + (i * (cols_ * depth_)), cols_, depth_); }
+        T* data_;
+        int rows_,cols_,depth_;
+        __host__ __device__ MatrixView(T* data, int r, int c, int d) : data_(data), rows_(r), cols_(c), depth_(d) {}
+        __host__ __device__ TwoDim<T> operator[](int i) { return TwoDim<T>(data_ + (i * (cols_ * depth_)), cols_, depth_); }
+        __host__ __device__ const TwoDim<T> operator[](int i) const { return TwoDim<T>(data_ + (i * (cols_ * depth_)), cols_, depth_); }
 };
 
 struct Shape {
@@ -63,18 +58,18 @@ struct Shape {
     int outputSize() const { return outputDepth() * outputRows() * outputCols(); }
 };
 
-__global__ void conv3d_kernel(const float* input_ptr, float* output_ptr, int input_depth, int input_rows, int input_cols,
-                              int kernel_depth, int kernel_rows, int kernel_cols) {
+__global__ void conv3dCUDA(const float *input_ptr, float *output_ptr, int input_depth, int input_rows, int input_cols,
+                          int kernel_depth, int kernel_rows, int kernel_cols) {
     extern __shared__ float shmem_ptr[];
 
     MatrixView<float> input((float*)input_ptr, input_depth, input_rows, input_cols);
-    MatrixView<float> kernel((float*)kernel_const, kernel_depth, kernel_rows, kernel_cols);
+    MatrixView<float> kernel((float*)kernel_dev, kernel_depth, kernel_rows, kernel_cols);
 
     int tx = threadIdx.x, ty = threadIdx.y;
     int bx = blockIdx.x, by = blockIdx.y, bz = blockIdx.z;
 
     int image_rows = blockDim.y + kernel_rows - 1;
-    int image_cols = blockDim.x + kernel_cols - 1 + 1; // +1 breaks bank conflicts
+    int image_cols = blockDim.x + kernel_cols - 1 + 1; //one extra column to avoid bank conflicts
 
     TwoDim<float> shmem(shmem_ptr, image_rows, image_cols);
 
@@ -88,7 +83,7 @@ __global__ void conv3d_kernel(const float* input_ptr, float* output_ptr, int inp
 
     int y = gy0 + ty;
     int x = gx0 + tx;
-    bool valid_output = (gz0 < output_depth && y < output_rows && x < output_cols);
+    bool valid_output = gz0 < output_depth && y < output_rows && x < output_cols;
     float sum = 0.0f;
 
     for (int kz = 0; kz < kernel_depth; kz++) {
@@ -97,7 +92,7 @@ __global__ void conv3d_kernel(const float* input_ptr, float* output_ptr, int inp
         for (int yy = ty; yy < image_rows; yy += blockDim.y) {
             for (int xx = tx; xx < image_cols; xx += blockDim.x) {
                 int gz = current_z;
-                int gy = gy0 + yy, gx = gx0 + xx;
+                int gy = gy0 + yy,gx = gx0 + xx;
                 shmem[yy][xx] = (gz < input_depth && gy < input_rows && gx < input_cols) ? input[gz][gy][gx] : 0.0f;
             }
         }
@@ -120,27 +115,27 @@ __global__ void conv3d_kernel(const float* input_ptr, float* output_ptr, int inp
     }
 }
 
-// kernel must already be in kernel_const; returns the kernel's runtime in microseconds
-float conv3dGpu(const float* input, float* output, const Shape& s, dim3 block) {
-    assert(block.x > 0 && block.y > 0 && "block dimensions must be positive");
+float conv3dGPU(const float *input, float *output, const Shape& s, dim3 block) {
+    assert(block.x > 0 && block.y > 0);
 
     int image_rows = block.y + s.kernel_rows - 1;
-    int image_cols = block.x + s.kernel_cols - 1 + 1; // +1 breaks bank conflicts
+    int image_cols = block.x + s.kernel_cols - 1 + 1;
     size_t shmem_size = image_rows * image_cols * sizeof(float);
 
-    dim3 grid((s.outputCols() + block.x - 1) / block.x, (s.outputRows() + block.y - 1) / block.y, s.outputDepth());
+    dim3 grid((s.outputCols() + block.x - 1)/block.x,
+              (s.outputRows() + block.y - 1)/block.y,s.outputDepth());
 
     CudaTimer timer;
     timer.start();
-    conv3d_kernel<<<grid, block, shmem_size>>>(input, output, s.input_depth, s.input_rows, s.input_cols,
-                                               s.kernel_depth, s.kernel_rows, s.kernel_cols);
+    conv3dCUDA<<<grid,block,shmem_size>>>(input,output,s.input_depth,s.input_rows,s.input_cols,
+                                          s.kernel_depth,s.kernel_rows,s.kernel_cols);
     timer.stop();
-    CUDA_CHECK(cudaPeekAtLastError());
+    CUDA_CHECK(cudaPeekAtLastError()); //launch errors
     return timer.elapsedTimeUs();
 }
 
-// golden reference: accumulates in double so the GPU's rounding error is what gets measured
-void conv3dCpu(const float* input, const float* kernel, float* output, const Shape& s) {
+//CPU reference. accumulate in double to check the fp32 error
+void conv3dCPU(const float *input, const float *kernel, float *output, const Shape& s) {
     for (int z = 0; z < s.outputDepth(); z++) {
         for (int y = 0; y < s.outputRows(); y++) {
             for (int x = 0; x < s.outputCols(); x++) {
@@ -150,40 +145,40 @@ void conv3dCpu(const float* input, const float* kernel, float* output, const Sha
                         for (int kx = 0; kx < s.kernel_cols; kx++) {
                             int in = ((z + kz) * s.input_rows + (y + ky)) * s.input_cols + (x + kx);
                             int k = (kz * s.kernel_rows + ky) * s.kernel_cols + kx;
-                            acc += (double)input[in] * kernel[k];
+                            acc += static_cast<double>(input[in]) * kernel[k];
                         }
                     }
                 }
-                output[(z * s.outputRows() + y) * s.outputCols() + x] = (float)acc;
+                output[(z * s.outputRows() + y) * s.outputCols() + x] = static_cast<float>(acc);
             }
         }
     }
 }
 
-void fillNormal(float* data, int size, unsigned seed) {
+void fillNormal(float *data, int n, int seed) {
     mt19937 gen(seed);
     normal_distribution<float> dist(0.0f, 1.0f);
-    generate(data, data + size, [&]() { return dist(gen); });
+    for (int i = 0; i < n; i++) {
+        data[i] = dist(gen);
+    }
 }
 
-float maxAbsError(const float* a, const float* b, int size) {
+float maxError(const float *a, const float *b, int n) {
     float err = 0.0f;
-    for (int i = 0; i < size; i++) {
+    for (int i = 0; i < n; i++) {
         err = max(err, fabsf(a[i] - b[i]));
     }
     return err;
 }
 
-float median(vector<float> values) {
-    assert(!values.empty() && "median needs at least one value");
+float getMedian(vector<float> values) {
+    assert(!values.empty());
     sort(begin(values), end(values));
     return values[values.size() / 2];
 }
 
-// Step 1 : both block sizes must match the CPU reference, including shapes that are not a
-// multiple of the block size. Step 2 : time both, interleaved so that clock drift affects them equally.
-void run(const Shape& s, int reps, bool timeCpu) {
-    assert(s.kernelSize() <= MAX_KERNEL_SIZE && "kernel does not fit in kernel_const");
+void testConv3d(const Shape& s, int iterations, bool timeCPU) {
+    assert(s.kernelSize() <= MAX_KERNEL_SIZE);
 
     MemoryManager mmgr;
     auto input = mmgr.allocate_host_and_device<float>(s.inputSize());
@@ -194,39 +189,45 @@ void run(const Shape& s, int reps, bool timeCpu) {
     fillNormal(input.hostPtr, s.inputSize(), 1);
     fillNormal(kernel.data(), s.kernelSize(), 2);
     input.copy_to_device(s.inputSize());
-    CUDA_CHECK(cudaMemcpyToSymbol(kernel_const, kernel.data(), s.kernelSize() * sizeof(float)));
+    CUDA_CHECK(cudaMemcpyToSymbol(kernel_dev,kernel.data(),s.kernelSize() * sizeof(float)));
 
-    auto cpuStart = chrono::steady_clock::now();
-    conv3dCpu(input.hostPtr, kernel.data(), reference.data(), s);
-    float cpuMs = chrono::duration<float, milli>(chrono::steady_clock::now() - cpuStart).count();
+    auto start = chrono::high_resolution_clock::now();
+    conv3dCPU(input.hostPtr,kernel.data(),reference.data(),s);
+    auto stop = chrono::high_resolution_clock::now();
+    auto cpuTime = chrono::duration_cast<chrono::microseconds>(stop-start);
 
     const dim3 blocks[] = {dim3(16, 16), dim3(32, 32)};
     cout << "input " << s.input_depth << "x" << s.input_rows << "x" << s.input_cols << endl;
 
     for (const auto& block : blocks) {
-        conv3dGpu(input.devicePtr, output.devicePtr, s, block);
+        conv3dGPU(input.devicePtr,output.devicePtr,s,block);
         output.copy_to_host(s.outputSize());
-        float err = maxAbsError(output.hostPtr, reference.data(), s.outputSize());
-        assert(err < 1e-3f && "GPU output does not match the CPU reference");
-        cout << "  block " << block.x << "x" << block.y << " max abs error vs CPU = " << err << endl;
+        float err = maxError(output.hostPtr,reference.data(),s.outputSize());
+        assert(err < 1e-3f);
+        cout << "Block " << block.x << "x" << block.y << " max error vs CPU = " << err << endl;
     }
 
-    if (reps > 0) {
-        vector<float> times16, times32;
-        for (int i = 0; i < reps; i++) {
-            times16.push_back(conv3dGpu(input.devicePtr, output.devicePtr, s, blocks[0]));
-            times32.push_back(conv3dGpu(input.devicePtr, output.devicePtr, s, blocks[1]));
+    if (iterations > 0) {
+        vector<float> time16,time32;
+        for (int i = 0; i < iterations; i++) {
+            //interleave so the GPU clocks affect both approximately the same
+            time16.push_back(conv3dGPU(input.devicePtr,output.devicePtr,s,blocks[0]));
+            time32.push_back(conv3dGPU(input.devicePtr,output.devicePtr,s,blocks[1]));
         }
-        cout << "  block 16x16 median = " << median(times16) / 1000.0f << " ms" << endl;
-        cout << "  block 32x32 median = " << median(times32) / 1000.0f << " ms" << endl;
+        cout << "Block 16x16 median time = " << getMedian(time16)/1000.0f << " ms" << endl;
+        cout << "Block 32x32 median time = " << getMedian(time32)/1000.0f << " ms" << endl;
     }
-    if (timeCpu) {
-        cout << "  CPU (single thread) = " << cpuMs << " ms" << endl;
+    if (timeCPU) {
+        cout << "CPU single thread time = " << cpuTime.count()/1000.0f << " ms" << endl;
     }
+    cout << endl;
 }
 
 int main() {
-    run({19, 53, 61, 5, 5, 5}, 0, false);
-    run({32, 64, 64, 5, 5, 5}, 0, false);
-    run({256, 256, 256, 5, 5, 5}, 30, true);
+    //sizes which are not a multiple of either block size
+    testConv3d({19,53,61,5,5,5},0,false);
+    testConv3d({32,64,64,5,5,5},0,false);
+    //testConv3d({8,8,8,3,3,3},0,false);
+
+    testConv3d({256,256,256,5,5,5},30,true);
 }
