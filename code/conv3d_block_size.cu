@@ -29,21 +29,21 @@ struct RowView {
 };
 
 template <typename T>
-struct TwoDim {
+struct MatrixView {
         T* data_;
         int rows_,cols_;
-        __host__ __device__ TwoDim(T* data, int r, int c) : data_(data), rows_(r), cols_(c) {}
+        __host__ __device__ MatrixView(T* data, int r, int c) : data_(data), rows_(r), cols_(c) {}
         __host__ __device__ RowView<T> operator[](int i) { return RowView<T>(data_ + (i * cols_)); }
         __host__ __device__ const RowView<T> operator[](int i) const { return RowView<T>(data_ + (i * cols_)); }
 };
 
 template <typename T>
-struct MatrixView {
+struct MatrixView3D {
         T* data_;
         int rows_,cols_,depth_;
-        __host__ __device__ MatrixView(T* data, int r, int c, int d) : data_(data), rows_(r), cols_(c), depth_(d) {}
-        __host__ __device__ TwoDim<T> operator[](int i) { return TwoDim<T>(data_ + (i * (cols_ * depth_)), cols_, depth_); }
-        __host__ __device__ const TwoDim<T> operator[](int i) const { return TwoDim<T>(data_ + (i * (cols_ * depth_)), cols_, depth_); }
+        __host__ __device__ MatrixView3D(T* data, int r, int c, int d) : data_(data), rows_(r), cols_(c), depth_(d) {}
+        __host__ __device__ MatrixView<T> operator[](int i) { return MatrixView<T>(data_ + (i * (cols_ * depth_)), cols_, depth_); }
+        __host__ __device__ const MatrixView<T> operator[](int i) const { return MatrixView<T>(data_ + (i * (cols_ * depth_)), cols_, depth_); }
 };
 
 struct Shape {
@@ -62,8 +62,8 @@ __global__ void conv3dCUDA(const float *input_ptr, float *output_ptr, int input_
                           int kernel_depth, int kernel_rows, int kernel_cols) {
     extern __shared__ float shmem_ptr[];
 
-    MatrixView<float> input((float*)input_ptr, input_depth, input_rows, input_cols);
-    MatrixView<float> kernel((float*)kernel_dev, kernel_depth, kernel_rows, kernel_cols);
+    MatrixView3D<float> input((float*)input_ptr, input_depth, input_rows, input_cols);
+    MatrixView3D<float> kernel((float*)kernel_dev, kernel_depth, kernel_rows, kernel_cols);
 
     int tx = threadIdx.x, ty = threadIdx.y;
     int bx = blockIdx.x, by = blockIdx.y, bz = blockIdx.z;
@@ -71,7 +71,7 @@ __global__ void conv3dCUDA(const float *input_ptr, float *output_ptr, int input_
     int image_rows = blockDim.y + kernel_rows - 1;
     int image_cols = blockDim.x + kernel_cols - 1 + 1; //one extra column to avoid bank conflicts
 
-    TwoDim<float> shmem(shmem_ptr, image_rows, image_cols);
+    MatrixView<float> shmem(shmem_ptr, image_rows, image_cols);
 
     int gx0 = bx * blockDim.x, gy0 = by * blockDim.y, gz0 = bz;
 
@@ -79,7 +79,7 @@ __global__ void conv3dCUDA(const float *input_ptr, float *output_ptr, int input_
     int output_rows = input_rows - kernel_rows + 1;
     int output_cols = input_cols - kernel_cols + 1;
 
-    MatrixView<float> output(output_ptr, output_depth, output_rows, output_cols);
+    MatrixView3D<float> output(output_ptr, output_depth, output_rows, output_cols);
 
     int y = gy0 + ty;
     int x = gx0 + tx;
